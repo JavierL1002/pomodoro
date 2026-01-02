@@ -1,6 +1,6 @@
 
 export type ProfileType = 'universidad' | 'trabajo' | 'personal' | 'otro';
-export type Gender = 'masculino' | 'femenino' | 'ambos';
+export type Gender = 'masculino' | 'femenino' | 'otro';
 
 export interface Profile {
   id: string;
@@ -27,20 +27,21 @@ export interface Subject {
   profile_id: string;
   school_period_id: string;
   name: string;
-  code?: string;
   color: string;
-  icon: string;
   professor_name?: string;
   classroom?: string;
-  start_date: string;
-  end_date: string;
+  // Added properties used in SubjectManager
+  start_date?: string;
+  end_date?: string;
+  code?: string;
+  icon?: string;
 }
 
 export interface ClassSchedule {
   id: string;
   subject_id: string;
-  day_of_week: number; // 0-6
-  start_time: string; // "HH:mm"
+  day_of_week: number;
+  start_time: string;
   end_time: string;
 }
 
@@ -57,9 +58,7 @@ export interface Task {
   status: TaskStatus;
   estimated_pomodoros: number;
   completed_pomodoros: number;
-  custom_pomodoro_duration?: number;
   alert_days_before: number;
-  created_at: string;
 }
 
 export interface Exam {
@@ -67,9 +66,10 @@ export interface Exam {
   subject_id: string;
   name: string;
   exam_date: string;
-  duration_minutes: number;
-  weight_percentage?: number;
   status: 'upcoming' | 'completed' | 'missed';
+  // Added properties used in ExamManager
+  duration_minutes: number;
+  weight_percentage: number;
   alert_days_before: number;
 }
 
@@ -86,13 +86,11 @@ export type MaterialType = 'libro' | 'articulo' | 'video' | 'curso' | 'documento
 export interface Material {
   id: string;
   profile_id: string;
-  subject_id?: string;
   title: string;
   type: MaterialType;
   total_units: number;
   completed_units: number;
   status: 'not_started' | 'in_progress' | 'completed' | 'paused';
-  custom_pomodoro_duration?: number;
 }
 
 export interface PomodoroSettings {
@@ -110,21 +108,24 @@ export interface PomodoroSession {
   task_id?: string;
   exam_topic_id?: string;
   material_id?: string;
+  session_type: 'work' | 'short_break' | 'long_break';
+  planned_duration_minutes: number;
+  // Changed property name to duration_seconds as expected by views
   duration_seconds: number;
+  // Added status to track completed sessions
+  status: 'completed' | 'interrupted';
   focus_rating?: number;
   started_at: string;
   completed_at: string;
-  status: 'completed' | 'interrupted';
 }
 
+// Added Alert interface for Dashboard
 export interface Alert {
   id: string;
   profile_id: string;
-  type: 'task_due' | 'exam_upcoming';
   title: string;
   message: string;
   priority: Priority;
   is_read: boolean;
-  item_id: string;
-  date: string;
+  created_at: string;
 }
