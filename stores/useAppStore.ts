@@ -1,4 +1,3 @@
-
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { supabase } from '../lib/supabase';
@@ -6,6 +5,29 @@ import {
   Profile, SchoolPeriod, Subject, ClassSchedule, Task, Exam, 
   ExamTopic, Material, PomodoroSession, PomodoroSettings, Alert
 } from '../types';
+
+// =================================================================
+// FUNCIONES DE AYUDA PARA SUPABASE
+// =================================================================
+
+const insertToSupabase = async (table: string, data: any) => {
+  const { error } = await supabase.from(table).insert([data]);
+  if (error) console.error(`Error al guardar en ${table}:`, error);
+};
+
+const deleteFromSupabase = async (table: string, id: string) => {
+  const { error } = await supabase.from(table).delete().eq('id', id);
+  if (error) console.error(`Error al eliminar de ${table}:`, error);
+};
+
+const updateSupabase = async (table: string, id: string, updates: Partial<any>) => {
+  const { error } = await supabase.from(table).update(updates).eq('id', id);
+  if (error) console.error(`Error al actualizar ${table}:`, error);
+};
+
+// =================================================================
+// ESTADO DE LA APLICACIÓN
+// =================================================================
 
 interface AppState {
   theme: 'light' | 'dark';
@@ -38,8 +60,6 @@ interface AppState {
   addSession: (session: Omit<PomodoroSession, 'id'>) => void;
   updateSettings: (profileId: string, updates: Partial<PomodoroSettings>) => void;
   markAlertRead: (id: string) => void;
-  
-  // Acción para cargar todo desde Supabase
   syncWithSupabase: () => Promise<void>;
 }
 
@@ -63,115 +83,103 @@ export const useAppStore = create<AppState>()(
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
 
       syncWithSupabase: async () => {
-        // Esta función intentaría hacer SELECT de todas las tablas
-        // Por ahora mantenemos la estructura para que el usuario sepa dónde escalar
-        console.log("Intentando sincronizar con Supabase...");
+        console.log("Sincronizando con Supabase...");
+        // Aquí iría la lógica de carga inicial
       },
 
       addProfile: async (profile) => {
         const id = crypto.randomUUID();
-        const newProfile = { ...profile, id };
-        const defaultSettings: PomodoroSettings = {
-          profile_id: id,
-          work_duration: 25,
-          short_break: 5,
-          long_break: 15,
-          poms_before_long: 4,
-          auto_start_breaks: false,
-        };
-
-        // Guardar en Supabase si está disponible
-        try {
-          await supabase.from('profiles').insert([newProfile]);
-        } catch (e) {
-          console.error("Error al guardar perfil en Supabase", e);
-        }
-
+        // Nota: El SQL del usuario requiere user_id de auth.users. 
+        // Si no hay auth, esto fallará a menos que user_id sea opcional o usemos un dummy.
+        const newProfile = { ...profile, id, user_id: (await supabase.auth.getUser()).data.user?.id || '00000000-0000-0000-0000-000000000000' };
+        await insertToSupabase('profiles', newProfile);
+        
         set((state) => ({
           profiles: [...state.profiles, newProfile],
-          settings: { ...state.settings, [id]: defaultSettings }
+          settings: { ...state.settings, [id]: { profile_id: id, work_duration: 25, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false } }
         }));
       },
 
       deleteProfile: async (id) => {
-        try {
-          await supabase.from('profiles').delete().eq('id', id);
-        } catch (e) { console.error(e); }
-
+        await deleteFromSupabase('profiles', id);
         set((state) => ({
           profiles: state.profiles.filter(p => p.id !== id),
-          activeProfileId: state.activeProfileId === id ? null : state.activeProfileId,
-          periods: state.periods.filter(p => p.profile_id !== id),
-          subjects: state.subjects.filter(s => s.profile_id !== id),
-          sessions: state.sessions.filter(s => s.profile_id !== id),
-          alerts: state.alerts.filter(a => a.profile_id !== id)
+          activeProfileId: state.activeProfileId === id ? null : state.activeProfileId
         }));
       },
 
       setActiveProfile: (id) => set({ activeProfileId: id }),
 
-      addPeriod: (period) => set((state) => ({
-        periods: [...state.periods, { ...period, id: crypto.randomUUID() }]
-      })),
+      addPeriod: (period) => {
+        const newPeriod = { ...period, id: crypto.randomUUID() };
+        insertToSupabase('school_periods', newPeriod);
+        set((state) => ({ periods: [...state.periods, newPeriod] }));
+      },
 
-      addSubject: (subject) => set((state) => ({
-        subjects: [...state.subjects, { ...subject, id: crypto.randomUUID() }]
-      })),
+      addSubject: (subject) => {
+        const newSubject = { ...subject, id: crypto.randomUUID() };
+        insertToSupabase('subjects', newSubject);
+        set((state) => ({ subjects: [...state.subjects, newSubject] }));
+      },
 
-      addSchedule: (schedule) => set((state) => ({
-        schedules: [...state.schedules, { ...schedule, id: crypto.randomUUID() }]
-      })),
+      addSchedule: (schedule) => {
+        const newSchedule = { ...schedule, id: crypto.randomUUID() };
+        insertToSupabase('class_schedule', newSchedule);
+        set((state) => ({ schedules: [...state.schedules, newSchedule] }));
+      },
 
-      addTask: (task) => set((state) => ({
-        tasks: [...state.tasks, { ...task, id: crypto.randomUUID(), completed_pomodoros: 0 }]
-      })),
+      addTask: (task) => {
+        const newTask = { ...task, id: crypto.randomUUID(), completed_pomodoros: 0 };
+        insertToSupabase('tasks', newTask);
+        set((state) => ({ tasks: [...state.tasks, newTask] }));
+      },
 
-      updateTask: (id, updates) => set((state) => ({
-        tasks: state.tasks.map(t => t.id === id ? { ...t, ...updates } : t)
-      })),
+      updateTask: (id, updates) => {
+        updateSupabase('tasks', id, updates);
+        set((state) => ({ tasks: state.tasks.map(t => t.id === id ? { ...t, ...updates } : t) }));
+      },
 
-      addExam: (exam) => set((state) => ({
-        exams: [...state.exams, { ...exam, id: crypto.randomUUID() }]
-      })),
+      addExam: (exam) => {
+        const newExam = { ...exam, id: crypto.randomUUID() };
+        insertToSupabase('exams', newExam);
+        set((state) => ({ exams: [...state.exams, newExam] }));
+      },
 
-      addExamTopic: (topic) => set((state) => ({
-        examTopics: [...state.examTopics, { ...topic, id: crypto.randomUUID(), completed_pomodoros: 0 }]
-      })),
+      addExamTopic: (topic) => {
+        const newTopic = { ...topic, id: crypto.randomUUID(), completed_pomodoros: 0 };
+        insertToSupabase('exam_topics', newTopic);
+        set((state) => ({ examTopics: [...state.examTopics, newTopic] }));
+      },
 
-      addMaterial: (material) => set((state) => ({
-        materials: [...state.materials, { ...material, id: crypto.randomUUID() }]
-      })),
+      addMaterial: (material) => {
+        const newMaterial = { ...material, id: crypto.randomUUID() };
+        // El SQL del usuario usa 'study_materials'
+        insertToSupabase('study_materials', newMaterial);
+        set((state) => ({ materials: [...state.materials, newMaterial] }));
+      },
 
-      updateMaterial: (id, updates) => set((state) => ({
-        materials: state.materials.map(m => m.id === id ? { ...m, ...updates } : m)
-      })),
+      updateMaterial: (id, updates) => {
+        updateSupabase('study_materials', id, updates);
+        set((state) => ({ materials: state.materials.map(m => m.id === id ? { ...m, ...updates } : m) }));
+      },
 
       addSession: (session) => {
         const id = crypto.randomUUID();
-        const currentTasks = get().tasks;
-        const currentTopics = get().examTopics;
-
-        if (session.session_type === 'work') {
-          if (session.task_id) {
-            set({ tasks: currentTasks.map(t => t.id === session.task_id ? { ...t, completed_pomodoros: t.completed_pomodoros + 1 } : t) });
-          } else if (session.exam_topic_id) {
-            set({ examTopics: currentTopics.map(et => et.id === session.exam_topic_id ? { ...et, completed_pomodoros: et.completed_pomodoros + 1 } : et) });
-          }
-        }
-        
-        // Guardar sesión en Supabase para analíticas
-        supabase.from('sessions').insert([{ ...session, id }]).then();
-
+        // El SQL del usuario usa 'pomodoro_sessions'
+        insertToSupabase('pomodoro_sessions', { ...session, id });
         set((state) => ({ sessions: [...state.sessions, { ...session, id }] }));
       },
 
-      updateSettings: (profileId, updates) => set((state) => ({
-        settings: { ...state.settings, [profileId]: { ...state.settings[profileId], ...updates } }
-      })),
+      updateSettings: (profileId, updates) => {
+        // El SQL del usuario usa 'pomodoro_default_settings'
+        updateSupabase('pomodoro_default_settings', profileId, updates);
+        set((state) => ({ settings: { ...state.settings, [profileId]: { ...state.settings[profileId], ...updates } } }));
+      },
 
-      markAlertRead: (id) => set((state) => ({
-        alerts: state.alerts.map(a => a.id === id ? { ...a, is_read: true } : a)
-      }))
+      markAlertRead: (id) => {
+        updateSupabase('alerts', id, { is_dismissed: true });
+        set((state) => ({ alerts: state.alerts.map(a => a.id === id ? { ...a, is_read: true } : a) }));
+      }
     }),
     { name: 'pomosmart-cloud-v1' }
   )

@@ -3,9 +3,10 @@ import { createClient } from '@supabase/supabase-js';
 /**
  * Configuración de Supabase
  * Priorizamos VITE_ para Render/Vite y NEXT_ para compatibilidad.
+ * Se añade un mensaje de error más claro si las variables no están.
  */
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 // Verificamos si las credenciales son válidas
 const isValidConfig = supabaseUrl && supabaseUrl.startsWith('https://') && supabaseAnonKey;
@@ -18,14 +19,23 @@ export const supabase = isValidConfig
         if (prop === 'from') {
           return () => {
             const chain: any = {
-              insert: () => Promise.resolve({ data: null, error: null }),
+              insert: () => {
+                console.error("ERROR: Supabase no está configurado. Intentando INSERT en modo Mock.");
+                return Promise.resolve({ data: null, error: new Error("Supabase no configurado") });
+              },
               select: () => chain,
-              update: () => Promise.resolve({ data: null, error: null }),
-              delete: () => chain,
+              update: () => {
+                console.error("ERROR: Supabase no está configurado. Intentando UPDATE en modo Mock.");
+                return Promise.resolve({ data: null, error: new Error("Supabase no configurado") });
+              },
+              delete: () => {
+                console.error("ERROR: Supabase no está configurado. Intentando DELETE en modo Mock.");
+                return Promise.resolve({ data: null, error: new Error("Supabase no configurado") });
+              },
               eq: () => chain,
               order: () => chain,
-              single: () => Promise.resolve({ data: null, error: null }),
-              then: (onfulfilled: any) => Promise.resolve({ data: null, error: null }).then(onfulfilled),
+              single: () => Promise.resolve({ data: null, error: new Error("Supabase no configurado") }),
+              then: (onfulfilled: any) => Promise.resolve({ data: null, error: new Error("Supabase no configurado") }).then(onfulfilled),
             };
             return chain;
           };
@@ -42,8 +52,8 @@ export const supabase = isValidConfig
     }) as any;
 
 if (!isValidConfig) {
-  console.warn(
-    "⚠️ Supabase no está configurado. La app funcionará en modo offline (Mock).\n" +
-    "Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Render para conectar la base de datos."
+  console.error(
+    "❌ ERROR CRÍTICO: Supabase no está configurado. La app funcionará en modo offline (Mock).\n" +
+    "Asegúrate de configurar las variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY."
   );
 }
