@@ -3,8 +3,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../stores/useAppStore';
 import { 
   Play, Pause, RotateCcw, CheckCircle2, Star, 
-  Maximize2, Minimize2, Sparkles, Trophy
+  Maximize2, Minimize2, Sparkles, Trophy, BrainCircuit, Loader2
 } from 'lucide-react';
+import { GoogleGenAI } from "@google/genai";
 
 const PomodoroTimer: React.FC = () => {
   const { 
@@ -24,6 +25,7 @@ const PomodoroTimer: React.FC = () => {
   const [showCompletionModal, setShowCompletionModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [motivation, setMotivation] = useState<string | null>(null);
+  const [isSuggesting, setIsSuggesting] = useState(false);
 
   const timerRef = useRef<any>(null);
   const startTimeRef = useRef<string | null>(null);
@@ -38,6 +40,34 @@ const PomodoroTimer: React.FC = () => {
       "¡Enfócate en tu meta! ✨"
     ];
     return phrases[Math.floor(Math.random() * phrases.length)];
+  };
+
+  const getAiSuggestion = async () => {
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      alert("Configura tu API_KEY en Vercel para activar las sugerencias inteligentes.");
+      return;
+    }
+
+    setIsSuggesting(true);
+    try {
+      const pendingTasks = tasks.filter(t => t.status !== 'completed');
+      const ai = new GoogleGenAI({ apiKey });
+      const prompt = `Tengo estas tareas pendientes: ${JSON.stringify(pendingTasks.map(t => ({ title: t.title, priority: t.priority, due: t.due_date })))}.
+      ¿Cuál debería priorizar ahora mismo? Responde SOLO con el título exacto de la tarea y una razón de 5 palabras.`;
+
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: prompt,
+      });
+
+      const suggestion = response.text || "";
+      alert(`Sugerencia IA: ${suggestion}`);
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsSuggesting(false);
+    }
   };
 
   useEffect(() => {
@@ -92,7 +122,6 @@ const PomodoroTimer: React.FC = () => {
     const plannedMins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : 15;
     const actualSecs = (plannedMins * 60) - timeLeft;
 
-    // Updated addSession call to use duration_seconds and include status
     addSession({
       profile_id: activeProfileId,
       task_id: selectedItem?.type === 'task' ? selectedItem.id : undefined,
@@ -199,7 +228,17 @@ const PomodoroTimer: React.FC = () => {
 
       {!isActive && !isFullscreen && (
         <div className={`mt-12 w-full p-8 rounded-[3rem] border shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-200'}`}>
-            <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-6 text-center">Asignar Sesión</h3>
+            <div className="flex items-center justify-between mb-6">
+               <h3 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Asignar Sesión</h3>
+               <button 
+                onClick={getAiSuggestion}
+                disabled={isSuggesting}
+                className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-indigo-500 hover:text-indigo-600 disabled:opacity-50"
+               >
+                 {isSuggesting ? <Loader2 className="animate-spin" size={14} /> : <BrainCircuit size={14} />}
+                 Sugerencia IA
+               </button>
+            </div>
             <select 
               className={`w-full p-5 rounded-2xl font-bold outline-none border-none transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900'}`}
               onChange={(e) => {
