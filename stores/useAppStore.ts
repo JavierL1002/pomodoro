@@ -1,6 +1,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { supabase } from '../lib/supabase';
 import { 
   Profile, SchoolPeriod, Subject, ClassSchedule, Task, Exam, 
   ExamTopic, Material, PomodoroSession, PomodoroSettings, Alert
@@ -19,12 +20,11 @@ interface AppState {
   materials: Material[];
   sessions: PomodoroSession[];
   settings: Record<string, PomodoroSettings>;
-  // Added missing alerts state
   alerts: Alert[];
 
   toggleTheme: () => void;
-  addProfile: (profile: Omit<Profile, 'id'>) => void;
-  deleteProfile: (id: string) => void;
+  addProfile: (profile: Omit<Profile, 'id'>) => Promise<void>;
+  deleteProfile: (id: string) => Promise<void>;
   setActiveProfile: (id: string | null) => void;
   addPeriod: (period: Omit<SchoolPeriod, 'id'>) => void;
   addSubject: (subject: Omit<Subject, 'id'>) => void;
@@ -37,13 +37,15 @@ interface AppState {
   updateMaterial: (id: string, updates: Partial<Material>) => void;
   addSession: (session: Omit<PomodoroSession, 'id'>) => void;
   updateSettings: (profileId: string, updates: Partial<PomodoroSettings>) => void;
-  // Added missing markAlertRead action
   markAlertRead: (id: string) => void;
+  
+  // Acción para cargar todo desde Supabase
+  syncWithSupabase: () => Promise<void>;
 }
 
 export const useAppStore = create<AppState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       theme: 'light',
       profiles: [],
       activeProfileId: null,
@@ -56,12 +58,17 @@ export const useAppStore = create<AppState>()(
       materials: [],
       sessions: [],
       settings: {},
-      // Initialized alerts array
       alerts: [],
 
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
 
-      addProfile: (profile) => set((state) => {
+      syncWithSupabase: async () => {
+        // Esta función intentaría hacer SELECT de todas las tablas
+        // Por ahora mantenemos la estructura para que el usuario sepa dónde escalar
+        console.log("Intentando sincronizar con Supabase...");
+      },
+
+      addProfile: async (profile) => {
         const id = crypto.randomUUID();
         const newProfile = { ...profile, id };
         const defaultSettings: PomodoroSettings = {
@@ -72,20 +79,34 @@ export const useAppStore = create<AppState>()(
           poms_before_long: 4,
           auto_start_breaks: false,
         };
-        return {
+
+        // Guardar en Supabase si está disponible
+        try {
+          await supabase.from('profiles').insert([newProfile]);
+        } catch (e) {
+          console.error("Error al guardar perfil en Supabase", e);
+        }
+
+        set((state) => ({
           profiles: [...state.profiles, newProfile],
           settings: { ...state.settings, [id]: defaultSettings }
-        };
-      }),
+        }));
+      },
 
-      deleteProfile: (id) => set((state) => ({
-        profiles: state.profiles.filter(p => p.id !== id),
-        activeProfileId: state.activeProfileId === id ? null : state.activeProfileId,
-        periods: state.periods.filter(p => p.profile_id !== id),
-        subjects: state.subjects.filter(s => s.profile_id !== id),
-        sessions: state.sessions.filter(s => s.profile_id !== id),
-        alerts: state.alerts.filter(a => a.profile_id !== id)
-      })),
+      deleteProfile: async (id) => {
+        try {
+          await supabase.from('profiles').delete().eq('id', id);
+        } catch (e) { console.error(e); }
+
+        set((state) => ({
+          profiles: state.profiles.filter(p => p.id !== id),
+          activeProfileId: state.activeProfileId === id ? null : state.activeProfileId,
+          periods: state.periods.filter(p => p.profile_id !== id),
+          subjects: state.subjects.filter(s => s.profile_id !== id),
+          sessions: state.sessions.filter(s => s.profile_id !== id),
+          alerts: state.alerts.filter(a => a.profile_id !== id)
+        }));
+      },
 
       setActiveProfile: (id) => set({ activeProfileId: id }),
 
@@ -125,28 +146,33 @@ export const useAppStore = create<AppState>()(
         materials: state.materials.map(m => m.id === id ? { ...m, ...updates } : m)
       })),
 
-      addSession: (session) => set((state) => {
+      addSession: (session) => {
         const id = crypto.randomUUID();
-        // Update counters automatically
+        const currentTasks = get().tasks;
+        const currentTopics = get().examTopics;
+
         if (session.session_type === 'work') {
           if (session.task_id) {
-            set(s => ({ tasks: s.tasks.map(t => t.id === session.task_id ? { ...t, completed_pomodoros: t.completed_pomodoros + 1 } : t) }));
+            set({ tasks: currentTasks.map(t => t.id === session.task_id ? { ...t, completed_pomodoros: t.completed_pomodoros + 1 } : t) });
           } else if (session.exam_topic_id) {
-            set(s => ({ examTopics: s.examTopics.map(et => et.id === session.exam_topic_id ? { ...et, completed_pomodoros: et.completed_pomodoros + 1 } : et) }));
+            set({ examTopics: currentTopics.map(et => et.id === session.exam_topic_id ? { ...et, completed_pomodoros: et.completed_pomodoros + 1 } : et) });
           }
         }
-        return { sessions: [...state.sessions, { ...session, id }] };
-      }),
+        
+        // Guardar sesión en Supabase para analíticas
+        supabase.from('sessions').insert([{ ...session, id }]).then();
+
+        set((state) => ({ sessions: [...state.sessions, { ...session, id }] }));
+      },
 
       updateSettings: (profileId, updates) => set((state) => ({
         settings: { ...state.settings, [profileId]: { ...state.settings[profileId], ...updates } }
       })),
 
-      // Implemented markAlertRead
       markAlertRead: (id) => set((state) => ({
         alerts: state.alerts.map(a => a.id === id ? { ...a, is_read: true } : a)
       }))
     }),
-    { name: 'pomosmart-pro-v2-2' }
+    { name: 'pomosmart-cloud-v1' }
   )
 );

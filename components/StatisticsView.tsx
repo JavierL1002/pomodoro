@@ -48,14 +48,15 @@ const StatisticsView: React.FC = () => {
       const ai = new GoogleGenAI({ apiKey });
       
       // Construimos un resumen de las tareas más trabajadas para darle contexto a la IA
-      const topItems = Object.entries(
+      // Fix for arithmetic operation error on line 58: added explicit type for reduce and entries casting
+      const topItems = (Object.entries(
         profileSessions.reduce((acc: Record<string, number>, s) => {
           const name = s.task_id ? tasks.find(t => t.id === s.task_id)?.title : 
                        s.material_id ? materials.find(m => m.id === s.material_id)?.title : 'General';
           if (name) acc[name] = (acc[name] || 0) + 1;
           return acc;
-        }, {})
-      ).sort((a, b) => b[1] - a[1]).slice(0, 2).map(i => i[0]).join(", ");
+        }, {} as Record<string, number>)
+      ) as [string, number][]).sort((a, b) => b[1] - a[1]).slice(0, 2).map(i => i[0]).join(", ");
 
       const prompt = `Actúa como un mentor de productividad de élite. Analiza este perfil académico:
       - Usuario: ${activeProfile?.user_name} (${activeProfile?.type})

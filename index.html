@@ -1,11 +1,56 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PomoSmart Productivity</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200;300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ['Plus Jakarta Sans', 'sans-serif'],
+            },
+            borderRadius: {
+              '4xl': '2rem',
+              '5xl': '3rem',
+            },
+            animation: {
+              'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+            }
+          }
+        }
+      }
+    </script>
+    <style>
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      .scrollbar-hide::-webkit-scrollbar {
+        display: none;
+      }
+      .scrollbar-light::-webkit-scrollbar {
+        width: 8px;
+      }
+      .scrollbar-light::-webkit-scrollbar-thumb {
+        background: #e2e8f0;
+        border-radius: 10px;
+      }
+      .scrollbar-dark::-webkit-scrollbar {
+        width: 8px;
+      }
+      .scrollbar-dark::-webkit-scrollbar-thumb {
+        background: #334155;
+        border-radius: 10px;
+      }
+    </style>
   <script type="importmap">
 {
   "imports": {
@@ -24,7 +69,7 @@
 }
 </script>
 </head>
-  <body class="bg-slate-50 text-slate-900 overflow-x-hidden">
+  <body class="transition-colors duration-500 selection:bg-indigo-100 selection:text-indigo-600">
     <div id="root"></div>
   </body>
 </html>
