@@ -1,23 +1,20 @@
 -- ============================================
 -- SISTEMA ACADÉMICO COMPLETO CON POMODORO INTELIGENTE
--- Versión 3.0 - DEFINITIVA Y COMPLETA
+-- Versión 3.1 - CORRECCIÓN DE RESTRICCIONES
 -- ============================================
 
--- LIMPIEZA PREVIA (Para evitar errores de "already exists")
+-- LIMPIEZA DE TRIGGERS PREVIOS
 DROP TRIGGER IF EXISTS trigger_create_default_settings ON profiles;
 DROP TRIGGER IF EXISTS trigger_create_default_task_types ON profiles;
 DROP TRIGGER IF EXISTS trigger_update_pomodoro_counters ON pomodoro_sessions;
-DROP TRIGGER IF EXISTS trigger_create_task_alerts ON tasks;
-DROP TRIGGER IF EXISTS trigger_create_exam_alerts ON exams;
-DROP TRIGGER IF EXISTS trigger_refresh_stats ON pomodoro_sessions;
 
 -- Extensiones
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
--- 1. TABLA DE PERFILES
+-- 1. TABLA DE PERFILES (Asegurando que user_id sea opcional)
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID, -- Opcional para pruebas iniciales
+  user_id UUID, 
   name VARCHAR(100) NOT NULL,
   type VARCHAR(50) NOT NULL CHECK (type IN ('universidad', 'trabajo', 'personal', 'otro')),
   user_name VARCHAR(100) NOT NULL,
@@ -28,6 +25,9 @@ CREATE TABLE IF NOT EXISTS profiles (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- FORZAR QUE user_id SEA OPCIONAL (Por si la tabla ya existía con NOT NULL)
+ALTER TABLE profiles ALTER COLUMN user_id DROP NOT NULL;
 
 -- 2. CONFIGURACIÓN DE POMODORO
 CREATE TABLE IF NOT EXISTS pomodoro_default_settings (
@@ -213,7 +213,7 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
--- 13. MENSAJES MOTIVACIONALES (De tu código original)
+-- 13. MENSAJES MOTIVACIONALES
 CREATE TABLE IF NOT EXISTS motivational_messages (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
@@ -224,19 +224,29 @@ CREATE TABLE IF NOT EXISTS motivational_messages (
 );
 
 -- ============================================
--- FUNCIONES AVANZADAS (De tu código original)
+-- FUNCIONES Y TRIGGERS
 -- ============================================
 
--- Función para actualizar updated_at
-CREATE OR REPLACE FUNCTION update_updated_at_column()
+CREATE OR REPLACE FUNCTION create_default_settings()
 RETURNS TRIGGER AS $$
 BEGIN
-  NEW.updated_at = NOW();
+  INSERT INTO pomodoro_default_settings (profile_id) VALUES (NEW.id);
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
 
--- Función para actualizar contadores de pomodoros automáticamente
+CREATE OR REPLACE FUNCTION create_default_task_types()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO task_types (profile_id, name, icon) VALUES
+    (NEW.id, 'Trabajo', '📝'),
+    (NEW.id, 'Exposición', '🎤'),
+    (NEW.id, 'Debate', '💬'),
+    (NEW.id, 'Otras', '📋');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION update_pomodoro_counters()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -252,32 +262,6 @@ BEGIN
   RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
-
--- Función para crear configuración por defecto
-CREATE OR REPLACE FUNCTION create_default_settings()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO pomodoro_default_settings (profile_id) VALUES (NEW.id);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- Función para crear tipos de tareas por defecto
-CREATE OR REPLACE FUNCTION create_default_task_types()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO task_types (profile_id, name, icon) VALUES
-    (NEW.id, 'Trabajo', '📝'),
-    (NEW.id, 'Exposición', '🎤'),
-    (NEW.id, 'Debate', '💬'),
-    (NEW.id, 'Otras', '📋');
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- ============================================
--- TRIGGERS
--- ============================================
 
 CREATE TRIGGER trigger_create_default_settings 
 AFTER INSERT ON profiles FOR EACH ROW EXECUTE FUNCTION create_default_settings();
@@ -306,6 +290,14 @@ ALTER TABLE pomodoro_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE motivational_messages ENABLE ROW LEVEL SECURITY;
 
+-- Eliminar políticas previas para evitar errores de duplicados
+DO $$ 
+BEGIN
+    EXECUTE (SELECT string_agg('DROP POLICY IF EXISTS "Public Access" ON ' || tablename || ';', ' ') 
+             FROM pg_tables WHERE schemaname = 'public');
+END $$;
+
+-- Crear nuevas políticas
 CREATE POLICY "Public Access" ON profiles FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON pomodoro_default_settings FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON school_periods FOR ALL USING (true) WITH CHECK (true);
@@ -334,10 +326,10 @@ VALUES (
   true, 
   '#4F46E5', 
   '🎓'
-) ON CONFLICT (id) DO NOTHING;
+) ON CONFLICT (id) DO UPDATE SET is_active = true;
 
--- Mensajes motivacionales iniciales
 INSERT INTO motivational_messages (message, gender_target) VALUES
 ('¡Vamos {nombre}, tú puedes con esto!', 'ambos'),
 ('El éxito es la suma de pequeños esfuerzos repetidos día tras día.', 'ambos'),
-('Enfócate en el progreso, no en la perfección.', 'ambos');
+('Enfócate en el progreso, no en la perfección.', 'ambos')
+ON CONFLICT DO NOTHING;
