@@ -1,7 +1,15 @@
 -- ============================================
 -- SISTEMA ACADÉMICO COMPLETO CON POMODORO INTELIGENTE
--- Versión Final - Optimizada para el Repositorio
+-- Versión 3.0 - DEFINITIVA Y COMPLETA
 -- ============================================
+
+-- LIMPIEZA PREVIA (Para evitar errores de "already exists")
+DROP TRIGGER IF EXISTS trigger_create_default_settings ON profiles;
+DROP TRIGGER IF EXISTS trigger_create_default_task_types ON profiles;
+DROP TRIGGER IF EXISTS trigger_update_pomodoro_counters ON pomodoro_sessions;
+DROP TRIGGER IF EXISTS trigger_create_task_alerts ON tasks;
+DROP TRIGGER IF EXISTS trigger_create_exam_alerts ON exams;
+DROP TRIGGER IF EXISTS trigger_refresh_stats ON pomodoro_sessions;
 
 -- Extensiones
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
@@ -9,7 +17,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- 1. TABLA DE PERFILES
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID, -- Cambiado a opcional para permitir uso sin Auth inicial
+  user_id UUID, -- Opcional para pruebas iniciales
   name VARCHAR(100) NOT NULL,
   type VARCHAR(50) NOT NULL CHECK (type IN ('universidad', 'trabajo', 'personal', 'otro')),
   user_name VARCHAR(100) NOT NULL,
@@ -205,11 +213,85 @@ CREATE TABLE IF NOT EXISTS alerts (
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- 13. MENSAJES MOTIVACIONALES (De tu código original)
+CREATE TABLE IF NOT EXISTS motivational_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  profile_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+  message TEXT NOT NULL,
+  gender_target VARCHAR(20) DEFAULT 'ambos' CHECK (gender_target IN ('masculino', 'femenino', 'ambos')),
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- ============================================
--- SEGURIDAD (RLS) - ACCESO PÚBLICO PARA PRUEBAS
+-- FUNCIONES AVANZADAS (De tu código original)
 -- ============================================
 
--- Habilitar RLS
+-- Función para actualizar updated_at
+CREATE OR REPLACE FUNCTION update_updated_at_column()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = NOW();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función para actualizar contadores de pomodoros automáticamente
+CREATE OR REPLACE FUNCTION update_pomodoro_counters()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.session_type = 'work' AND NEW.status = 'completed' THEN
+    IF NEW.task_id IS NOT NULL THEN
+      UPDATE tasks SET completed_pomodoros = completed_pomodoros + 1 WHERE id = NEW.task_id;
+    ELSIF NEW.exam_topic_id IS NOT NULL THEN
+      UPDATE exam_topics SET completed_pomodoros = completed_pomodoros + 1 WHERE id = NEW.exam_topic_id;
+    ELSIF NEW.material_id IS NOT NULL THEN
+      UPDATE study_materials SET completed_pomodoros = completed_pomodoros + 1 WHERE id = NEW.material_id;
+    END IF;
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función para crear configuración por defecto
+CREATE OR REPLACE FUNCTION create_default_settings()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO pomodoro_default_settings (profile_id) VALUES (NEW.id);
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Función para crear tipos de tareas por defecto
+CREATE OR REPLACE FUNCTION create_default_task_types()
+RETURNS TRIGGER AS $$
+BEGIN
+  INSERT INTO task_types (profile_id, name, icon) VALUES
+    (NEW.id, 'Trabajo', '📝'),
+    (NEW.id, 'Exposición', '🎤'),
+    (NEW.id, 'Debate', '💬'),
+    (NEW.id, 'Otras', '📋');
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- ============================================
+-- TRIGGERS
+-- ============================================
+
+CREATE TRIGGER trigger_create_default_settings 
+AFTER INSERT ON profiles FOR EACH ROW EXECUTE FUNCTION create_default_settings();
+
+CREATE TRIGGER trigger_create_default_task_types 
+AFTER INSERT ON profiles FOR EACH ROW EXECUTE FUNCTION create_default_task_types();
+
+CREATE TRIGGER trigger_update_pomodoro_counters 
+AFTER INSERT ON pomodoro_sessions FOR EACH ROW EXECUTE FUNCTION update_pomodoro_counters();
+
+-- ============================================
+-- SEGURIDAD (RLS) - ACCESO PÚBLICO
+-- ============================================
+
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pomodoro_default_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE school_periods ENABLE ROW LEVEL SECURITY;
@@ -222,9 +304,8 @@ ALTER TABLE exam_topics ENABLE ROW LEVEL SECURITY;
 ALTER TABLE study_materials ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pomodoro_sessions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE alerts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE motivational_messages ENABLE ROW LEVEL SECURITY;
 
--- Políticas de acceso público total (Cualquiera puede leer/escribir)
--- Esto es para que la app funcione de inmediato sin configurar Auth.
 CREATE POLICY "Public Access" ON profiles FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON pomodoro_default_settings FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON school_periods FOR ALL USING (true) WITH CHECK (true);
@@ -237,26 +318,12 @@ CREATE POLICY "Public Access" ON exam_topics FOR ALL USING (true) WITH CHECK (tr
 CREATE POLICY "Public Access" ON study_materials FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON pomodoro_sessions FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Public Access" ON alerts FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Public Access" ON motivational_messages FOR ALL USING (true) WITH CHECK (true);
 
 -- ============================================
--- TRIGGERS AUTOMÁTICOS
+-- DATOS INICIALES
 -- ============================================
 
--- Función para crear configuración por defecto al crear perfil
-CREATE OR REPLACE FUNCTION create_default_settings()
-RETURNS TRIGGER AS $$
-BEGIN
-  INSERT INTO pomodoro_default_settings (profile_id)
-  VALUES (NEW.id);
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_create_default_settings 
-AFTER INSERT ON profiles
-FOR EACH ROW EXECUTE FUNCTION create_default_settings();
-
--- Insertar un perfil inicial
 INSERT INTO profiles (id, name, type, user_name, gender, is_active, color, icon)
 VALUES (
   '00000000-0000-0000-0000-000000000000', 
@@ -268,3 +335,9 @@ VALUES (
   '#4F46E5', 
   '🎓'
 ) ON CONFLICT (id) DO NOTHING;
+
+-- Mensajes motivacionales iniciales
+INSERT INTO motivational_messages (message, gender_target) VALUES
+('¡Vamos {nombre}, tú puedes con esto!', 'ambos'),
+('El éxito es la suma de pequeños esfuerzos repetidos día tras día.', 'ambos'),
+('Enfócate en el progreso, no en la perfección.', 'ambos');
