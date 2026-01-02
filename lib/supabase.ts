@@ -1,24 +1,16 @@
-
 import { createClient } from '@supabase/supabase-js';
 
 /**
- * Supabase Client Configuration
- * 
- * En Vite, las variables de entorno deben empezar con VITE_ para ser accesibles en el cliente.
- * Si usas Render o Vercel, asegúrate de configurar:
- * VITE_SUPABASE_URL
- * VITE_SUPABASE_ANON_KEY
+ * Configuración de Supabase
+ * Priorizamos VITE_ para Render/Vite y NEXT_ para compatibilidad.
  */
-
-
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
 
-// EXPORTAR es la clave
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // Verificamos si las credenciales son válidas
 const isValidConfig = supabaseUrl && supabaseUrl.startsWith('https://') && supabaseAnonKey;
 
+// UN SOLO "export const supabase" (Esto arregla el error de Render)
 export const supabase = isValidConfig
   ? createClient(supabaseUrl, supabaseAnonKey)
   : new Proxy({}, {
@@ -51,7 +43,7 @@ export const supabase = isValidConfig
 
 if (!isValidConfig) {
   console.warn(
-    "⚠️ Supabase no está configurado. La app funcionará en modo local (LocalStorage).\n" +
-    "Para activar la nube, configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en tu panel de Render/Vercel."
+    "⚠️ Supabase no está configurado. La app funcionará en modo offline (Mock).\n" +
+    "Configura VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY en Render para conectar la base de datos."
   );
 }
