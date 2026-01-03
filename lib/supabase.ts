@@ -4,7 +4,8 @@ import { createClient } from '@supabase/supabase-js';
  * Configuración de Supabase con validación mejorada
  */
 
-// Obtener variables de entorno con fallbacks
+// Obtener variables de entorno inyectadas por Vite
+// Usamos import.meta.env ya que fueron inyectadas en vite.config.ts
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || '';
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
@@ -12,19 +13,17 @@ const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 const isValidConfig = 
   supabaseUrl && 
   supabaseUrl.startsWith('https://') && 
-  supabaseUrl.includes('.supabase.co') &&
   supabaseAnonKey && 
   supabaseAnonKey.length > 20;
 
 // Log para debugging (solo en desarrollo)
-if (!isValidConfig) {
+if (import.meta.env.DEV && !isValidConfig) {
   console.error('❌ Supabase NO configurado correctamente:');
   console.error('URL:', supabaseUrl || 'NO DEFINIDA');
   console.error('Key:', supabaseAnonKey ? `${supabaseAnonKey.substring(0, 20)}...` : 'NO DEFINIDA');
-  console.error('Verifica las variables de entorno en Render');
-} else {
+  console.error('Verifica las variables de entorno VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY');
+} else if (import.meta.env.DEV) {
   console.log('✅ Supabase configurado correctamente');
-  console.log('URL:', supabaseUrl);
 }
 
 // Crear cliente o mock

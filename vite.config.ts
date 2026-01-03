@@ -1,47 +1,41 @@
 import path from 'path';
-import { defineConfig } from 'vite';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig(({ mode }) => {
-  console.log('🔧 Build Mode:', mode);
-  
-  // En producción, Render inyecta las variables directamente como process.env
-  const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || '';
-  const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY || '';
-  const geminiApiKey = process.env.GEMINI_API_KEY || process.env.API_KEY || '';
+    // Carga las variables de entorno desde .env y process.env
+    // El tercer argumento '' asegura que se carguen todas las variables, no solo las VITE_
+    const env = loadEnv(mode, process.cwd(), '');
 
-  console.log('✅ Supabase URL:', supabaseUrl ? 'Configurada' : '❌ NO ENCONTRADA');
-  console.log('✅ Supabase Key:', supabaseAnonKey ? 'Configurada' : '❌ NO ENCONTRADA');
-  console.log('✅ Gemini Key:', geminiApiKey ? 'Configurada' : '❌ NO ENCONTRADA');
+    // Variables que deben estar disponibles en el cliente (deben ser VITE_*)
+    const supabaseUrl = env.VITE_SUPABASE_URL || '';
+    const supabaseAnonKey = env.VITE_SUPABASE_ANON_KEY || '';
+    
+    // Variables que se inyectan como process.env para compatibilidad (ej. Gemini Key)
+    const geminiApiKey = env.GEMINI_API_KEY || '';
 
-  return {
-    server: {
-      port: 3000,
-      host: '0.0.0.0',
-    },
-    plugins: [react()],
-    define: {
-      // Inyectar variables en tiempo de compilación
-      'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
-      'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
-      'process.env.API_KEY': JSON.stringify(geminiApiKey),
-      'process.env.GEMINI_API_KEY': JSON.stringify(geminiApiKey),
-    },
-    resolve: {
-      alias: {
-        '@': path.resolve(__dirname, '.'),
-      }
-    },
-    build: {
-      sourcemap: mode === 'development',
-      rollupOptions: {
-        output: {
-          manualChunks: {
-            vendor: ['react', 'react-dom'],
-            supabase: ['@supabase/supabase-js'],
-          }
+    return {
+      server: {
+        port: 3000,
+        host: '0.0.0.0',
+      },
+      plugins: [react()],
+      define: {
+        // 1. Inyectar las variables VITE_* para que el cliente las lea via import.meta.env
+        'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(supabaseUrl),
+        'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(supabaseAnonKey),
+        
+        // 2. Inyectar la clave de Gemini como process.env para compatibilidad con librerías
+        'process.env.GEMINI_API_KEY': JSON.stringify(geminiApiKey),
+        'process.env.API_KEY': JSON.stringify(geminiApiKey), // Por si acaso
+      },
+      resolve: {
+        alias: {
+          '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        sourcemap: mode === 'development',
       }
-    }
-  };
+    };
 });

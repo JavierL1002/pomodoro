@@ -11,7 +11,10 @@ import {
 // =================================================================
 
 const insertToSupabase = async (table: string, data: any) => {
-  const { error } = await supabase.from(table).insert([data]);
+    // Usar returning: 'minimal' para evitar el error de RLS 
+  // que ocurre cuando Supabase intenta hacer un SELECT implícito 
+  // después de un INSERT, y la política de SELECT no lo permite.
+  const { error } = await supabase.from(table).insert([data], { returning: 'minimal' });
   if (error) console.error(`Error al guardar en ${table}:`, error);
 };
 
