@@ -86,8 +86,85 @@ export const useAppStore = create<AppState>()(
       toggleTheme: () => set((state) => ({ theme: state.theme === 'light' ? 'dark' : 'light' })),
 
       syncWithSupabase: async () => {
-        console.log("Sincronizando con Supabase...");
-        // Aquí iría la lógica de carga inicial
+        console.log("🔄 Sincronizando con Supabase...");
+        try {
+          // Cargar perfiles
+          const { data: profiles, error: profilesError } = await supabase.from('profiles').select('*');
+          if (profilesError) {
+            console.error('Error al cargar perfiles:', profilesError);
+          } else if (profiles) {
+            console.log(`✅ Perfiles cargados: ${profiles.length}`);
+            set({ profiles });
+          }
+
+          // Cargar períodos escolares
+          const { data: periods, error: periodsError } = await supabase.from('school_periods').select('*');
+          if (!periodsError && periods) {
+            set({ periods });
+          }
+
+          // Cargar materias
+          const { data: subjects, error: subjectsError } = await supabase.from('subjects').select('*');
+          if (!subjectsError && subjects) {
+            set({ subjects });
+          }
+
+          // Cargar horarios de clase
+          const { data: schedules, error: schedulesError } = await supabase.from('class_schedules').select('*');
+          if (!schedulesError && schedules) {
+            set({ schedules });
+          }
+
+          // Cargar tareas
+          const { data: tasks, error: tasksError } = await supabase.from('tasks').select('*');
+          if (!tasksError && tasks) {
+            set({ tasks });
+          }
+
+          // Cargar exámenes
+          const { data: exams, error: examsError } = await supabase.from('exams').select('*');
+          if (!examsError && exams) {
+            set({ exams });
+          }
+
+          // Cargar temas de examen
+          const { data: examTopics, error: examTopicsError } = await supabase.from('exam_topics').select('*');
+          if (!examTopicsError && examTopics) {
+            set({ examTopics });
+          }
+
+          // Cargar materiales de estudio
+          const { data: materials, error: materialsError } = await supabase.from('materials').select('*');
+          if (!materialsError && materials) {
+            set({ materials });
+          }
+
+          // Cargar sesiones de pomodoro
+          const { data: sessions, error: sessionsError } = await supabase.from('pomodoro_sessions').select('*');
+          if (!sessionsError && sessions) {
+            set({ sessions });
+          }
+
+          // Cargar configuraciones de pomodoro
+          const { data: settingsData, error: settingsError } = await supabase.from('pomodoro_settings').select('*');
+          if (!settingsError && settingsData) {
+            const settingsMap: Record<string, PomodoroSettings> = {};
+            settingsData.forEach((s: any) => {
+              settingsMap[s.profile_id] = s;
+            });
+            set({ settings: settingsMap });
+          }
+
+          // Cargar alertas
+          const { data: alerts, error: alertsError } = await supabase.from('alerts').select('*');
+          if (!alertsError && alerts) {
+            set({ alerts });
+          }
+
+          console.log("✅ Sincronización completada");
+        } catch (error) {
+          console.error('❌ Error durante la sincronización:', error);
+        }
       },
 
       addProfile: async (profile) => {
@@ -127,7 +204,7 @@ export const useAppStore = create<AppState>()(
 
       addSchedule: (schedule) => {
         const newSchedule = { ...schedule, id: crypto.randomUUID() };
-        insertToSupabase('class_schedule', newSchedule);
+        insertToSupabase('class_schedules', newSchedule);
         set((state) => ({ schedules: [...state.schedules, newSchedule] }));
       },
 
@@ -157,12 +234,12 @@ export const useAppStore = create<AppState>()(
       addMaterial: (material) => {
         const newMaterial = { ...material, id: crypto.randomUUID() };
         // El SQL del usuario usa 'study_materials'
-        insertToSupabase('study_materials', newMaterial);
+        insertToSupabase('materials', newMaterial);
         set((state) => ({ materials: [...state.materials, newMaterial] }));
       },
 
       updateMaterial: (id, updates) => {
-        updateSupabase('study_materials', id, updates);
+        updateSupabase('materials', id, updates);
         set((state) => ({ materials: state.materials.map(m => m.id === id ? { ...m, ...updates } : m) }));
       },
 
@@ -175,7 +252,7 @@ export const useAppStore = create<AppState>()(
 
       updateSettings: (profileId, updates) => {
         // El SQL del usuario usa 'pomodoro_default_settings'
-        updateSupabase('pomodoro_default_settings', profileId, updates);
+        updateSupabase('pomodoro_settings', profileId, updates);
         set((state) => ({ settings: { ...state.settings, [profileId]: { ...state.settings[profileId], ...updates } } }));
       },
 

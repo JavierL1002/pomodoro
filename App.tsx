@@ -14,7 +14,12 @@ import { Plus, GraduationCap, Briefcase, Trash2, ArrowRight, CheckCircle2, Moon,
 import { ProfileType, Gender, PomodoroSettings } from './types';
 
 const App: React.FC = () => {
-  const { theme, toggleTheme, profiles, activeProfileId, setActiveProfile, addProfile, deleteProfile, settings, updateSettings } = useAppStore();
+  const { theme, toggleTheme, profiles, activeProfileId, setActiveProfile, addProfile, deleteProfile, settings, updateSettings, syncWithSupabase } = useAppStore();
+  
+  // Cargar datos desde Supabase al iniciar la aplicación
+  useEffect(() => {
+    syncWithSupabase();
+  }, []);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showCreateProfile, setShowCreateProfile] = useState(false);
   const [newProfileType, setNewProfileType] = useState<ProfileType>('universidad');
