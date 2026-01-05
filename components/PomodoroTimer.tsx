@@ -29,8 +29,12 @@ const PomodoroTimer: React.FC = () => {
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [aiTip, setAiTip] = useState<string | null>(null);
 
-  const timerRef = useRef<any>(null);
-  const startTimeRef = useRef<string | null>(null);
+  // FIX 1: Referencias para controlar el temporizador de forma precisa
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const startTimeRef = useRef<number | null>(null); // Timestamp en milisegundos
+  const sessionStartedRef = useRef<string | null>(null); // ISO string para la base de datos
+  const initialDurationRef = useRef<number>(0); // Duración inicial en segundos
+  const sessionSavedRef = useRef<boolean>(false); // Prevenir duplicación
 
   const getMotivationalPhrase = () => {
     const noun = activeProfile?.gender === 'femenino' ? 'reina' : activeProfile?.gender === 'masculino' ? 'rey' : 'estudiante';
@@ -56,7 +60,6 @@ const PomodoroTimer: React.FC = () => {
     try {
       const pendingTasks = tasks.filter(t => t.status !== 'completed');
       const ai = new GoogleGenAI({ apiKey });
-      // Fix: Properly close the template literal interpolation after JSON.stringify.
       const prompt = `Tengo estas tareas: ${JSON.stringify(pendingTasks.map(t => ({ title: t.title, priority: t.priority })))}. Small tip (max 8 words) on what to focus on based on priority. Tone: Encouraging mentor. Language: Spanish.`;
 
       const response = await ai.models.generateContent({
@@ -74,6 +77,7 @@ const PomodoroTimer: React.FC = () => {
     }
   };
 
+  // Frases motivacionales durante el trabajo
   useEffect(() => {
     if (isActive && mode === 'work') {
       const interval = setInterval(() => {
@@ -84,22 +88,53 @@ const PomodoroTimer: React.FC = () => {
     }
   }, [isActive, mode]);
 
+  // Reiniciar el tiempo cuando cambia el modo
   useEffect(() => {
     if (currentSettings) {
       const mins = mode === 'work' ? currentSettings.work_duration : mode === 'short_break' ? currentSettings.short_break : currentSettings.long_break;
-      setTimeLeft(mins * 60);
+      const seconds = mins * 60;
+      setTimeLeft(seconds);
+      initialDurationRef.current = seconds;
     }
   }, [mode, currentSettings]);
 
+  // FIX 1: Temporizador preciso basado en tiempo real
   useEffect(() => {
     if (isActive && timeLeft > 0) {
+      // Limpiar cualquier intervalo previo
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+
+      // Guardar el timestamp de inicio si no existe
+      if (!startTimeRef.current) {
+        startTimeRef.current = Date.now();
+      }
+
+      // Actualizar cada 100ms para mayor precisión
       timerRef.current = setInterval(() => {
-        setTimeLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timeLeft === 0) {
-      handleComplete();
+        const elapsed = Math.floor((Date.now() - startTimeRef.current!) / 1000);
+        const remaining = Math.max(0, initialDurationRef.current - elapsed);
+        
+        setTimeLeft(remaining);
+
+        // Si llegamos a 0, completar la sesión
+        if (remaining === 0) {
+          handleComplete();
+        }
+      }, 100);
+
+      return () => {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+      };
+    } else if (!isActive) {
+      // Limpiar el intervalo cuando se pausa
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
     }
-    return () => clearInterval(timerRef.current);
   }, [isActive, timeLeft]);
 
   const handleStart = () => {
@@ -108,24 +143,68 @@ const PomodoroTimer: React.FC = () => {
       setTimeout(() => setAiTip(null), 3000);
       return;
     }
+    
     setIsActive(true);
-    if (!startTimeRef.current) startTimeRef.current = new Date().toISOString();
+    sessionSavedRef.current = false; // Resetear flag de guardado
+    
+    // FIX 2: Guardar el tiempo de inicio real
+    if (!startTimeRef.current) {
+      startTimeRef.current = Date.now();
+      sessionStartedRef.current = new Date().toISOString();
+    }
+  };
+
+  const handlePause = () => {
+    setIsActive(false);
+    // Mantener el tiempo de inicio para poder reanudar
+  };
+
+  const handleReset = () => {
+    setIsActive(false);
+    const mins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : currentSettings?.long_break || 15;
+    const seconds = mins * 60;
+    setTimeLeft(seconds);
+    initialDurationRef.current = seconds;
+    startTimeRef.current = null;
+    sessionStartedRef.current = null;
+    sessionSavedRef.current = false;
   };
 
   const handleComplete = () => {
     setIsActive(false);
-    if (mode === 'work') {
+    
+    // FIX 3: Prevenir duplicación - solo mostrar modal si no se ha guardado
+    if (mode === 'work' && !sessionSavedRef.current) {
       setShowCompletionModal(true);
-    } else {
+    } else if (mode !== 'work') {
+      // Para descansos, cambiar automáticamente a trabajo
+      handleReset();
       setMode('work');
     }
   };
 
+  // FIX 2: Guardar la duración REAL de la sesión
   const saveSession = () => {
-    if (!activeProfileId || !startTimeRef.current) return;
+    if (!activeProfileId || !sessionStartedRef.current || sessionSavedRef.current) {
+      console.warn('Sesión ya guardada o datos incompletos');
+      return;
+    }
     
-    const plannedMins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : 15;
-    const actualSecs = (plannedMins * 60) - timeLeft;
+    // Marcar como guardada INMEDIATAMENTE para prevenir duplicación
+    sessionSavedRef.current = true;
+    
+    // FIX 2: Calcular la duración REAL basada en timestamps
+    const startTime = new Date(sessionStartedRef.current).getTime();
+    const endTime = Date.now();
+    const actualDurationSeconds = Math.floor((endTime - startTime) / 1000);
+    
+    const plannedMins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : currentSettings?.long_break || 15;
+
+    console.log('💾 Guardando sesión:', {
+      planned: plannedMins,
+      actual_seconds: actualDurationSeconds,
+      actual_minutes: (actualDurationSeconds / 60).toFixed(2)
+    });
 
     addSession({
       profile_id: activeProfileId,
@@ -134,24 +213,35 @@ const PomodoroTimer: React.FC = () => {
       material_id: selectedItem?.type === 'material' ? selectedItem.id : undefined,
       session_type: mode,
       planned_duration_minutes: plannedMins,
-      duration_seconds: actualSecs,
+      duration_seconds: actualDurationSeconds, // FIX 2: Usar duración REAL
       status: 'completed',
       focus_rating: rating,
-      started_at: startTimeRef.current,
+      started_at: sessionStartedRef.current,
       completed_at: new Date().toISOString(),
     });
 
+    // Cerrar modal y resetear
     setShowCompletionModal(false);
     setRating(0);
-    startTimeRef.current = null;
     
+    // Resetear referencias
+    startTimeRef.current = null;
+    sessionStartedRef.current = null;
+    
+    // Cambiar al siguiente modo
     if (mode === 'work') {
-      if (sessionCount % (currentSettings?.poms_before_long || 4) === 0) setMode('long_break');
-      else setMode('short_break');
+      if (sessionCount % (currentSettings?.poms_before_long || 4) === 0) {
+        setMode('long_break');
+      } else {
+        setMode('short_break');
+      }
       setSessionCount(prev => prev + 1);
     } else {
       setMode('work');
     }
+
+    // Resetear el temporizador para el siguiente ciclo
+    handleReset();
   };
 
   const formatTime = (seconds: number) => {
@@ -187,8 +277,9 @@ const PomodoroTimer: React.FC = () => {
           {(['work', 'short_break', 'long_break'] as const).map(m => (
             <button
               key={m}
-              onClick={() => { setMode(m); setIsActive(false); }}
-              className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all ${
+              onClick={() => { setMode(m); handleReset(); }}
+              disabled={isActive}
+              className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
                 mode === m ? 'bg-indigo-600 text-white shadow-xl scale-105' : theme === 'dark' ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-50'
               }`}
             >
@@ -207,7 +298,7 @@ const PomodoroTimer: React.FC = () => {
             stroke="currentColor" strokeWidth="8" fill="transparent" 
             className="text-indigo-500 transition-all duration-300 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]"
             strokeDasharray="283%"
-            strokeDashoffset={`${283 - (timeLeft / ((mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? 5 : 15) * 60)) * 283}%`}
+            strokeDashoffset={`${283 - (timeLeft / initialDurationRef.current) * 283}%`}
             strokeLinecap="round"
           />
         </svg>
@@ -225,11 +316,14 @@ const PomodoroTimer: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-16 relative z-30">
-        <button onClick={() => { setIsActive(false); setTimeLeft((mode === 'work' ? currentSettings?.work_duration || 25 : 5) * 60); }} className={`p-8 rounded-full border-2 transition-all hover:scale-110 active:scale-90 ${theme === 'dark' || isFullscreen ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-100 text-slate-400'}`}>
+        <button 
+          onClick={handleReset} 
+          className={`p-8 rounded-full border-2 transition-all hover:scale-110 active:scale-90 ${theme === 'dark' || isFullscreen ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-100 text-slate-400'}`}
+        >
           <RotateCcw size={32} />
         </button>
         <button 
-          onClick={isActive ? () => setIsActive(false) : handleStart}
+          onClick={isActive ? handlePause : handleStart}
           className={`w-40 h-40 rounded-full flex items-center justify-center text-white shadow-[0_30px_60px_-15px_rgba(79,70,229,0.5)] transition-all hover:scale-110 active:scale-95 ${isActive ? 'bg-amber-500' : 'bg-indigo-600'}`}
         >
           {isActive ? <Pause size={80} fill="currentColor" /> : <Play size={80} fill="currentColor" className="ml-4" />}
