@@ -58,6 +58,7 @@ interface AppState {
   updateTask: (id: string, updates: Partial<Task>) => void;
   addExam: (exam: Omit<Exam, 'id'>) => void;
   addExamTopic: (topic: Omit<ExamTopic, 'id' | 'completed_pomodoros'>) => void;
+  updateExamTopic: (id: string, updates: Partial<ExamTopic>) => void;
   addMaterial: (material: Omit<Material, 'id'>) => void;
   updateMaterial: (id: string, updates: Partial<Material>) => void;
   addSession: (session: Omit<PomodoroSession, 'id'>) => void;
@@ -229,6 +230,11 @@ export const useAppStore = create<AppState>()(
         const newTopic = { ...topic, id: crypto.randomUUID(), completed_pomodoros: 0 };
         insertToSupabase('exam_topics', newTopic);
         set((state) => ({ examTopics: [...state.examTopics, newTopic] }));
+      },
+
+      updateExamTopic: (id, updates) => {
+        updateSupabase('exam_topics', id, updates);
+        set((state) => ({ examTopics: state.examTopics.map(et => et.id === id ? { ...et, ...updates } : et) }));
       },
 
       addMaterial: (material) => {

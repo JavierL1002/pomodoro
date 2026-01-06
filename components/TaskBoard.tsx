@@ -1,9 +1,9 @@
 
 import React, { useState } from 'react';
 import { useAppStore } from '../stores/useAppStore';
-import { Plus, Timer, Trash2, CheckCircle2, Circle, ClipboardList, Filter } from 'lucide-react';
+import { Plus, Timer, Trash2, CheckCircle2, Circle, ClipboardList, Filter, TrendingUp, AlertCircle } from 'lucide-react';
 import { Priority, TaskStatus } from '../types';
-import { format } from 'date-fns';
+import { format, differenceInDays } from 'date-fns';
 import { es } from 'date-fns/locale';
 
 const TaskBoard: React.FC = () => {
@@ -24,7 +24,7 @@ const TaskBoard: React.FC = () => {
   const profileTasks = tasks.filter(t => {
       const subj = subjects.find(s => s.id === t.subject_id);
       return subj?.profile_id === activeProfileId && (filterStatus === 'all' || t.status === filterStatus);
-  });
+  }).sort((a, b) => new Date(a.due_date).getTime() - new Date(b.due_date).getTime());
 
   const handleAddTask = (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +43,24 @@ const TaskBoard: React.FC = () => {
     medium: 'bg-amber-100 text-amber-700',
     high: 'bg-orange-100 text-orange-700',
     urgent: 'bg-red-100 text-red-700',
+  };
+
+  // Calcular estadísticas generales
+  const stats = {
+    total: profileTasks.length,
+    completed: profileTasks.filter(t => t.status === 'completed').length,
+    pending: profileTasks.filter(t => t.status === 'pending').length,
+    late: profileTasks.filter(t => t.status === 'late').length,
+  };
+
+  // Función para obtener días restantes
+  const getDaysRemaining = (dueDate: string) => {
+    const days = differenceInDays(new Date(dueDate), new Date());
+    if (days < 0) return { text: 'Vencida', color: 'text-red-600', urgent: true };
+    if (days === 0) return { text: 'Hoy', color: 'text-orange-600', urgent: true };
+    if (days === 1) return { text: 'Mañana', color: 'text-amber-600', urgent: true };
+    if (days <= 3) return { text: `${days} días`, color: 'text-amber-500', urgent: false };
+    return { text: `${days} días`, color: 'text-slate-400', urgent: false };
   };
 
   return (
@@ -76,6 +94,40 @@ const TaskBoard: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Estadísticas generales */}
+      {stats.total > 0 && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+          <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black uppercase tracking-widest text-slate-400">Total</span>
+              <ClipboardList size={18} className="text-slate-400" />
+            </div>
+            <p className="text-3xl font-black text-slate-900">{stats.total}</p>
+          </div>
+          <div className="bg-emerald-50 p-6 rounded-2xl border border-emerald-100 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black uppercase tracking-widest text-emerald-600">Completadas</span>
+              <CheckCircle2 size={18} className="text-emerald-500" />
+            </div>
+            <p className="text-3xl font-black text-emerald-700">{stats.completed}</p>
+          </div>
+          <div className="bg-amber-50 p-6 rounded-2xl border border-amber-100 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black uppercase tracking-widest text-amber-600">Pendientes</span>
+              <Circle size={18} className="text-amber-500" />
+            </div>
+            <p className="text-3xl font-black text-amber-700">{stats.pending}</p>
+          </div>
+          <div className="bg-indigo-50 p-6 rounded-2xl border border-indigo-100 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-black uppercase tracking-widest text-indigo-600">Progreso</span>
+              <TrendingUp size={18} className="text-indigo-500" />
+            </div>
+            <p className="text-3xl font-black text-indigo-700">{stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0}%</p>
+          </div>
+        </div>
+      )}
 
       {isAdding && (
         <div className="bg-white p-10 rounded-[2.5rem] shadow-2xl border border-slate-100 mb-10 animate-in slide-in-from-top duration-300">
@@ -151,10 +203,21 @@ const TaskBoard: React.FC = () => {
         ) : (
           profileTasks.map(task => {
             const subject = subjects.find(s => s.id === task.subject_id);
+            const daysInfo = getDaysRemaining(task.due_date);
+            const progress = task.estimated_pomodoros > 0 
+              ? Math.round((task.completed_pomodoros / task.estimated_pomodoros) * 100) 
+              : 0;
+            
             return (
               <div 
                 key={task.id}
-                className={`flex items-center gap-6 p-6 bg-white border-2 rounded-[2rem] transition-all hover:shadow-xl hover:-translate-y-1 ${task.status === 'completed' ? 'opacity-60 bg-slate-50 grayscale border-slate-100' : 'border-slate-100'}`}
+                className={`flex items-center gap-6 p-6 bg-white border-2 rounded-[2rem] transition-all hover:shadow-xl hover:-translate-y-1 ${
+                  task.status === 'completed' 
+                    ? 'opacity-60 bg-slate-50 grayscale border-slate-100' 
+                    : daysInfo.urgent 
+                      ? 'border-red-200 bg-red-50/30' 
+                      : 'border-slate-100'
+                }`}
               >
                 <button 
                   onClick={() => updateTask(task.id, { status: task.status === 'completed' ? 'pending' : 'completed' })}
@@ -173,8 +236,14 @@ const TaskBoard: React.FC = () => {
                     <span className={`text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest ${priorityColors[task.priority]}`}>
                       {task.priority}
                     </span>
+                    {daysInfo.urgent && task.status !== 'completed' && (
+                      <span className="flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full font-black uppercase tracking-widest bg-red-100 text-red-700">
+                        <AlertCircle size={12} />
+                        {daysInfo.text}
+                      </span>
+                    )}
                   </div>
-                  <div className="flex items-center gap-6 text-xs font-bold text-slate-500">
+                  <div className="flex items-center gap-6 text-xs font-bold text-slate-500 mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-2 h-2 rounded-full" style={{ backgroundColor: subject?.color }} />
                       <span className="text-slate-800">{subject?.name}</span>
@@ -183,7 +252,18 @@ const TaskBoard: React.FC = () => {
                       <Timer size={14} className="text-indigo-500" />
                       <span>{task.completed_pomodoros} / {task.estimated_pomodoros} poms</span>
                     </div>
-                    <p className="text-slate-400">Vence: {format(new Date(task.due_date), "d MMM, HH:mm", { locale: es })}</p>
+                    <p className={daysInfo.color}>
+                      Vence: {format(new Date(task.due_date), "d MMM, HH:mm", { locale: es })}
+                    </p>
+                  </div>
+                  {/* Barra de progreso */}
+                  <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div 
+                      className={`h-full transition-all duration-700 ${
+                        task.status === 'completed' ? 'bg-emerald-500' : 'bg-indigo-500'
+                      }`}
+                      style={{ width: `${progress}%` }}
+                    />
                   </div>
                 </div>
 
@@ -193,7 +273,7 @@ const TaskBoard: React.FC = () => {
                    </button>
                 </div>
               </div>
-            )
+            );
           })
         )}
       </div>
