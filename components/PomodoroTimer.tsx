@@ -11,11 +11,26 @@ import { GoogleGenAI } from "@google/genai";
 const PomodoroTimer: React.FC = () => {
   const { 
     theme, activeProfileId, profiles, settings, tasks, 
-    subjects, examTopics, materials, addSession 
+    subjects, exams, examTopics, materials, addSession 
   } = useAppStore();
   
   const activeProfile = profiles.find(p => p.id === activeProfileId);
   const currentSettings = activeProfileId ? settings[activeProfileId] : null;
+
+  // Filtrar tareas, materiales y temas del perfil activo
+  const profileTasks = tasks.filter(t => {
+    const subject = subjects.find(s => s.id === t.subject_id);
+    return subject?.profile_id === activeProfileId;
+  });
+
+  const profileMaterials = materials.filter(m => m.profile_id === activeProfileId);
+
+  const profileExamTopics = examTopics.filter(et => {
+    const exam = exams.find(e => e.id === et.exam_id);
+    if (!exam) return false;
+    const subject = subjects.find(s => s.id === exam.subject_id);
+    return subject?.profile_id === activeProfileId;
+  });
   
   const [mode, setMode] = useState<'work' | 'short_break' | 'long_break'>('work');
   const [timeLeft, setTimeLeft] = useState(25 * 60);
@@ -58,7 +73,7 @@ const PomodoroTimer: React.FC = () => {
 
     setIsSuggesting(true);
     try {
-      const pendingTasks = tasks.filter(t => t.status !== 'completed');
+      const pendingTasks = profileTasks.filter(t => t.status !== 'completed');
       const ai = new GoogleGenAI({ apiKey });
       const prompt = `Tengo estas tareas: ${JSON.stringify(pendingTasks.map(t => ({ title: t.title, priority: t.priority })))}. Small tip (max 8 words) on what to focus on based on priority. Tone: Encouraging mentor. Language: Spanish.`;
 
@@ -351,22 +366,22 @@ const PomodoroTimer: React.FC = () => {
               onChange={(e) => {
                 const [type, id] = e.target.value.split(':');
                 if (!id) { setSelectedItem(null); return; }
-                const item = [...tasks, ...materials, ...examTopics].find(i => i.id === id);
+                const item = [...profileTasks, ...profileMaterials, ...profileExamTopics].find(i => i.id === id);
                 setSelectedItem({ type: type as any, id, title: (item as any).title || (item as any).name });
               }}
             >
               <option value="">-- Elige un desafío para hoy --</option>
               <optgroup label="Tareas Críticas">
-                {tasks.filter(t => t.status !== 'completed').map(t => <option key={t.id} value={`task:${t.id}`}>🔥 {t.title}</option>)}
+                {profileTasks.filter(t => t.status !== 'completed').map(t => <option key={t.id} value={`task:${t.id}`}>🔥 {t.title}</option>)}
               </optgroup>
               <optgroup label="Materiales de Estudio">
-                {materials.filter(m => m.status !== 'completed').map(m => {
+                {profileMaterials.filter(m => m.status !== 'completed').map(m => {
                   const sub = subjects.find(s => s.id === m.subject_id);
                   return <option key={m.id} value={`material:${m.id}`}>📚 {m.title} ({sub?.name || 'Gral'})</option>
                 })}
               </optgroup>
               <optgroup label="Temas de Examen">
-                {examTopics.filter(et => et.status !== 'completed').map(et => <option key={et.id} value={`topic:${et.id}`}>🎯 {et.title}</option>)}
+                {profileExamTopics.filter(et => et.status !== 'completed').map(et => <option key={et.id} value={`topic:${et.id}`}>🎯 {et.title}</option>)}
               </optgroup>
             </select>
         </div>
