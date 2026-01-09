@@ -4,14 +4,14 @@ import { useAppStore } from '../stores/useAppStore';
 import { 
   Play, Pause, RotateCcw, Star, 
   Maximize2, Minimize2, Sparkles, Trophy, BrainCircuit, Loader2,
-  Info, AlertTriangle
+  Info, AlertTriangle, Settings, X
 } from 'lucide-react';
 import { GoogleGenAI } from "@google/genai";
 
 const PomodoroTimer: React.FC = () => {
   const { 
     theme, activeProfileId, profiles, settings, tasks, 
-    subjects, exams, examTopics, materials, addSession 
+    subjects, exams, examTopics, materials, addSession, updateSettings
   } = useAppStore();
   
   const activeProfile = profiles.find(p => p.id === activeProfileId);
@@ -39,26 +39,34 @@ const PomodoroTimer: React.FC = () => {
   const [selectedItem, setSelectedItem] = useState<{ id: string, type: 'task' | 'topic' | 'material', title: string } | null>(null);
   const [sessionCount, setSessionCount] = useState(1);
   const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [rating, setRating] = useState(0);
   const [motivation, setMotivation] = useState<string | null>(null);
   const [isSuggesting, setIsSuggesting] = useState(false);
   const [aiTip, setAiTip] = useState<string | null>(null);
 
+  // Configuración temporal para el modal
+  const [tempSettings, setTempSettings] = useState({
+    work_duration: 25,
+    short_break: 5,
+    long_break: 15,
+    poms_before_long: 4
+  });
+
   // FIX 1: Referencias para controlar el temporizador de forma precisa
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const startTimeRef = useRef<number | null>(null); // Timestamp en milisegundos
   const sessionStartedRef = useRef<string | null>(null); // ISO string para la base de datos
-  const initialDurationRef = useRef<number>(0); // Duración inicial en segundos
-  const sessionSavedRef = useRef<boolean>(false); // Prevenir duplicación
+  const sessionSavedRef = useRef<boolean>(false); // FIX 3: Prevenir duplicación
+  const initialDurationRef = useRef<number>(25 * 60); // Duración inicial en segundos
 
   const getMotivationalPhrase = () => {
-    const noun = activeProfile?.gender === 'femenino' ? 'reina' : activeProfile?.gender === 'masculino' ? 'rey' : 'estudiante';
     const phrases = [
-      `¡Deja el móvil, ${noun}! 👑`,
-      `¡Tu futuro te lo agradecerá! 💪`,
-      `¡Enfoque láser, ${activeProfile?.user_name}! 🚀`,
-      "¡Casi llegamos a la meta! 🌟",
-      "¡Demuestra de lo que eres capaz! ✨"
+      "¡Vas increíble! 🚀",
+      "Sigue así, campeón 💪",
+      "Tu esfuerzo vale oro ⭐",
+      "Estás en racha 🔥",
+      "¡Imparable! 🎯"
     ];
     return phrases[Math.floor(Math.random() * phrases.length)];
   };
@@ -78,17 +86,38 @@ const PomodoroTimer: React.FC = () => {
       const prompt = `Tengo estas tareas: ${JSON.stringify(pendingTasks.map(t => ({ title: t.title, priority: t.priority })))}. Small tip (max 8 words) on what to focus on based on priority. Tone: Encouraging mentor. Language: Spanish.`;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-3-flash-preview',
-        contents: prompt,
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts: [{ text: prompt }] }]
       });
-
-      setAiTip(response.text || "Prioriza lo más urgente hoy.");
+      
+      setAiTip(response.text);
       setTimeout(() => setAiTip(null), 8000);
     } catch (error) {
-      console.error(error);
-      setAiTip("Error al conectar con la IA.");
+      console.error("Error al obtener sugerencia de IA:", error);
+      setAiTip("No se pudo conectar con el asesor IA.");
+      setTimeout(() => setAiTip(null), 5000);
     } finally {
       setIsSuggesting(false);
+    }
+  };
+
+  // Inicializar tempSettings cuando se abre el modal
+  useEffect(() => {
+    if (showSettingsModal && currentSettings) {
+      setTempSettings({
+        work_duration: currentSettings.work_duration,
+        short_break: currentSettings.short_break,
+        long_break: currentSettings.long_break,
+        poms_before_long: currentSettings.poms_before_long
+      });
+    }
+  }, [showSettingsModal, currentSettings]);
+
+  // Guardar configuración
+  const handleSaveSettings = () => {
+    if (activeProfileId) {
+      updateSettings(activeProfileId, tempSettings);
+      setShowSettingsModal(false);
     }
   };
 
@@ -144,115 +173,88 @@ const PomodoroTimer: React.FC = () => {
           clearInterval(timerRef.current);
         }
       };
-    } else if (!isActive) {
-      // Limpiar el intervalo cuando se pausa
+    } else {
+      // Limpiar el intervalo si no está activo
       if (timerRef.current) {
         clearInterval(timerRef.current);
+        timerRef.current = null;
       }
     }
   }, [isActive, timeLeft]);
 
   const handleStart = () => {
-    if (mode === 'work' && !selectedItem) {
-      setAiTip("Elige un tema antes de arrancar.");
-      setTimeout(() => setAiTip(null), 3000);
-      return;
-    }
-    
-    setIsActive(true);
-    sessionSavedRef.current = false; // Resetear flag de guardado
-    
-    // FIX 2: Guardar el tiempo de inicio real
-    if (!startTimeRef.current) {
+    if (!isActive) {
+      // Iniciar nueva sesión
       startTimeRef.current = Date.now();
       sessionStartedRef.current = new Date().toISOString();
+      sessionSavedRef.current = false; // Resetear el flag
     }
+    setIsActive(true);
   };
 
   const handlePause = () => {
     setIsActive(false);
-    // Mantener el tiempo de inicio para poder reanudar
+    // Actualizar el tiempo inicial para que refleje el tiempo restante
+    initialDurationRef.current = timeLeft;
+    // Resetear el timestamp de inicio para que se recalcule al reanudar
+    startTimeRef.current = null;
   };
 
   const handleReset = () => {
     setIsActive(false);
-    const mins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : currentSettings?.long_break || 15;
-    const seconds = mins * 60;
-    setTimeLeft(seconds);
-    initialDurationRef.current = seconds;
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
     startTimeRef.current = null;
     sessionStartedRef.current = null;
     sessionSavedRef.current = false;
+    
+    if (currentSettings) {
+      const mins = mode === 'work' ? currentSettings.work_duration : mode === 'short_break' ? currentSettings.short_break : currentSettings.long_break;
+      const seconds = mins * 60;
+      setTimeLeft(seconds);
+      initialDurationRef.current = seconds;
+    }
   };
 
   const handleComplete = () => {
-    setIsActive(false);
-    
-    // FIX 3: Prevenir duplicación - solo mostrar modal si no se ha guardado
-    if (mode === 'work' && !sessionSavedRef.current) {
-      setShowCompletionModal(true);
-    } else if (mode !== 'work') {
-      // Para descansos, cambiar automáticamente a trabajo
-      handleReset();
-      setMode('work');
-    }
-  };
-
-  // FIX 2: Guardar la duración REAL de la sesión
-  const saveSession = () => {
-    if (!activeProfileId || !sessionStartedRef.current || sessionSavedRef.current) {
-      console.warn('Sesión ya guardada o datos incompletos');
+    // FIX 3: Prevenir que se guarde la sesión más de una vez
+    if (sessionSavedRef.current) {
+      console.log("⚠️ Sesión ya guardada, evitando duplicación");
       return;
     }
-    
-    // Marcar como guardada INMEDIATAMENTE para prevenir duplicación
-    sessionSavedRef.current = true;
-    
-    // FIX 2: Calcular la duración REAL basada en timestamps
-    const startTime = new Date(sessionStartedRef.current).getTime();
-    const endTime = Date.now();
-    const actualDurationSeconds = Math.floor((endTime - startTime) / 1000);
-    
-    const plannedMins = mode === 'work' ? currentSettings?.work_duration || 25 : mode === 'short_break' ? currentSettings?.short_break || 5 : currentSettings?.long_break || 15;
 
-    console.log('💾 Guardando sesión:', {
-      planned: plannedMins,
-      actual_seconds: actualDurationSeconds,
-      actual_minutes: (actualDurationSeconds / 60).toFixed(2)
-    });
+    setIsActive(false);
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
 
-    addSession({
-      profile_id: activeProfileId,
-      task_id: selectedItem?.type === 'task' ? selectedItem.id : undefined,
-      exam_topic_id: selectedItem?.type === 'topic' ? selectedItem.id : undefined,
-      material_id: selectedItem?.type === 'material' ? selectedItem.id : undefined,
-      session_type: mode,
-      planned_duration_minutes: plannedMins,
-      duration_seconds: actualDurationSeconds, // FIX 2: Usar duración REAL
-      status: 'completed',
-      focus_rating: rating,
-      started_at: sessionStartedRef.current,
-      completed_at: new Date().toISOString(),
-    });
+    // FIX 2: Calcular el tiempo REAL trabajado
+    const actualDuration = initialDurationRef.current - timeLeft; // En segundos
+    const actualMinutes = Math.round(actualDuration / 60);
 
-    // Cerrar modal y resetear
-    setShowCompletionModal(false);
-    setRating(0);
-    
-    // Resetear referencias
-    startTimeRef.current = null;
-    sessionStartedRef.current = null;
-    
-    // Cambiar al siguiente modo
-    if (mode === 'work') {
-      if (sessionCount % (currentSettings?.poms_before_long || 4) === 0) {
-        setMode('long_break');
-      } else {
-        setMode('short_break');
-      }
+    console.log(`✅ Sesión completada: ${actualMinutes} minutos trabajados`);
+
+    if (mode === 'work' && activeProfileId && sessionStartedRef.current) {
+      // Marcar como guardada ANTES de guardar para prevenir duplicación
+      sessionSavedRef.current = true;
+
+      addSession({
+        profile_id: activeProfileId,
+        task_id: selectedItem?.type === 'task' ? selectedItem.id : null,
+        exam_topic_id: selectedItem?.type === 'topic' ? selectedItem.id : null,
+        material_id: selectedItem?.type === 'material' ? selectedItem.id : null,
+        started_at: sessionStartedRef.current,
+        ended_at: new Date().toISOString(),
+        duration_minutes: actualMinutes, // FIX 2: Usar tiempo REAL
+        rating: 0,
+        notes: null
+      });
+
+      setShowCompletionModal(true);
       setSessionCount(prev => prev + 1);
-    } else {
-      setMode('work');
     }
 
     // Resetear el temporizador para el siguiente ciclo
@@ -288,60 +290,81 @@ const PomodoroTimer: React.FC = () => {
       )}
 
       {!isFullscreen && (
-        <div className={`flex gap-3 mb-16 p-2 rounded-[2rem] border-2 shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
-          {(['work', 'short_break', 'long_break'] as const).map(m => (
-            <button
-              key={m}
-              onClick={() => { setMode(m); handleReset(); }}
-              disabled={isActive}
-              className={`px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all disabled:opacity-50 ${
-                mode === m ? 'bg-indigo-600 text-white shadow-xl scale-105' : theme === 'dark' ? 'text-slate-400 hover:bg-slate-700' : 'text-slate-500 hover:bg-slate-50'
-              }`}
-            >
-              {m === 'work' ? 'Productividad' : m === 'short_break' ? 'D. Corto' : 'D. Largo'}
-            </button>
-          ))}
+        <div className="flex items-center justify-between w-full mb-8">
+          <div className={`flex gap-3 p-2 rounded-[2rem] border-2 shadow-sm ${theme === 'dark' ? 'bg-slate-800 border-slate-700' : 'bg-white border-slate-100'}`}>
+            {(['work', 'short_break', 'long_break'] as const).map(m => (
+              <button
+                key={m}
+                onClick={() => { 
+                  if (!isActive) {
+                    setMode(m); 
+                    handleReset(); 
+                  }
+                }}
+                disabled={isActive}
+                className={`px-6 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-all ${
+                  mode === m 
+                    ? 'bg-indigo-600 text-white shadow-lg scale-105' 
+                    : theme === 'dark' 
+                      ? 'text-slate-400 hover:text-white' 
+                      : 'text-slate-500 hover:text-slate-900'
+                } ${isActive ? 'opacity-50 cursor-not-allowed' : ''}`}
+              >
+                {m === 'work' ? '💪 Trabajo' : m === 'short_break' ? '☕ Descanso' : '🌴 Descanso Largo'}
+              </button>
+            ))}
+          </div>
+          <button 
+            onClick={() => setShowSettingsModal(true)}
+            className={`p-4 rounded-2xl border-2 transition-all hover:scale-110 ${theme === 'dark' ? 'bg-slate-800 border-slate-700 text-slate-400 hover:text-white' : 'bg-white border-slate-100 text-slate-500 hover:text-slate-900'}`}
+          >
+            <Settings size={20} />
+          </button>
         </div>
       )}
 
-      <div className="relative mb-20 group">
-        <div className={`absolute -inset-8 bg-indigo-500/10 rounded-full blur-3xl opacity-0 group-hover:opacity-100 transition-opacity duration-1000 ${isActive ? 'animate-pulse' : ''}`} />
-        <svg className={`${isFullscreen ? 'w-[38rem] h-[38rem]' : 'w-96 h-96'} -rotate-90 transition-all duration-1000 relative z-10`}>
-          <circle cx="50%" cy="50%" r="45%" stroke="currentColor" strokeWidth="4" fill="transparent" className={theme === 'dark' || isFullscreen ? "text-slate-800" : "text-slate-100"} />
+      <div className={`relative mb-16 ${isFullscreen ? 'scale-[2.5]' : ''}`}>
+        <svg className="transform -rotate-90" width="320" height="320">
+          <circle cx="160" cy="160" r="140" stroke={theme === 'dark' || isFullscreen ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'} strokeWidth="20" fill="none" />
           <circle 
-            cx="50%" cy="50%" r="45%" 
-            stroke="currentColor" strokeWidth="8" fill="transparent" 
-            className="text-indigo-500 transition-all duration-300 drop-shadow-[0_0_15px_rgba(99,102,241,0.5)]"
-            strokeDasharray="283%"
-            strokeDashoffset={`${283 - (timeLeft / initialDurationRef.current) * 283}%`}
+            cx="160" cy="160" r="140"
+            stroke="url(#gradient)"
+            strokeWidth="20"
+            fill="none"
             strokeLinecap="round"
+            strokeDasharray={`${2 * Math.PI * 140}`}
+            strokeDashoffset={`${2 * Math.PI * 140 * (1 - (timeLeft / initialDurationRef.current))}`}
+            className="transition-all duration-300 ease-linear"
           />
+          <defs>
+            <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#6366f1" />
+              <stop offset="100%" stopColor="#a855f7" />
+            </linearGradient>
+          </defs>
         </svg>
-        <div className="absolute inset-0 flex flex-col items-center justify-center z-20">
-          <span className={`${isFullscreen ? 'text-[14rem]' : 'text-9xl'} font-black tracking-tighter leading-none ${theme === 'dark' || isFullscreen ? 'text-white' : 'text-slate-950'}`}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center">
+          <p className={`text-7xl font-black tracking-tight ${theme === 'dark' || isFullscreen ? 'text-white' : 'text-slate-900'}`}>
             {formatTime(timeLeft)}
-          </span>
-          {selectedItem && (
-            <div className="mt-12 text-center px-10 animate-in fade-in duration-500">
-              <p className="text-[12px] font-black uppercase tracking-[0.4em] text-indigo-500 mb-2">Meta de Enfoque</p>
-              <p className={`text-2xl font-black truncate max-w-[320px] ${theme === 'dark' || isFullscreen ? 'text-slate-200' : 'text-slate-900'}`}>{selectedItem.title}</p>
-            </div>
-          )}
+          </p>
+          <p className={`text-sm font-black uppercase tracking-[0.3em] mt-2 ${theme === 'dark' || isFullscreen ? 'text-slate-400' : 'text-slate-500'}`}>
+            {mode === 'work' ? 'Enfocado' : mode === 'short_break' ? 'Descansa' : 'Relájate'}
+          </p>
         </div>
       </div>
 
-      <div className="flex items-center gap-16 relative z-30">
-        <button 
-          onClick={handleReset} 
-          className={`p-8 rounded-full border-2 transition-all hover:scale-110 active:scale-90 ${theme === 'dark' || isFullscreen ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-100 text-slate-400'}`}
-        >
+      <div className="flex items-center gap-6 mb-12">
+        {!isActive ? (
+          <button onClick={handleStart} className="w-24 h-24 bg-gradient-to-br from-indigo-600 to-purple-600 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+            <Play size={40} fill="white" />
+          </button>
+        ) : (
+          <button onClick={handlePause} className="w-24 h-24 bg-gradient-to-br from-amber-500 to-orange-500 text-white rounded-full flex items-center justify-center shadow-2xl hover:scale-110 active:scale-95 transition-all">
+            <Pause size={40} fill="white" />
+          </button>
+        )}
+        <button onClick={handleReset} className={`p-8 rounded-full border-2 transition-all hover:scale-110 active:scale-90 ${theme === 'dark' || isFullscreen ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-100 text-slate-400'}`}>
           <RotateCcw size={32} />
-        </button>
-        <button 
-          onClick={isActive ? handlePause : handleStart}
-          className={`w-40 h-40 rounded-full flex items-center justify-center text-white shadow-[0_30px_60px_-15px_rgba(79,70,229,0.5)] transition-all hover:scale-110 active:scale-95 ${isActive ? 'bg-amber-500' : 'bg-indigo-600'}`}
-        >
-          {isActive ? <Pause size={80} fill="currentColor" /> : <Play size={80} fill="currentColor" className="ml-4" />}
         </button>
         <button onClick={() => setIsFullscreen(!isFullscreen)} className={`p-8 rounded-full border-2 transition-all hover:scale-110 active:scale-90 ${theme === 'dark' || isFullscreen ? 'bg-slate-800 border-slate-700 text-slate-400' : 'bg-white border-slate-100 text-slate-400'}`}>
           {isFullscreen ? <Minimize2 size={32} /> : <Maximize2 size={32} />}
@@ -387,23 +410,107 @@ const PomodoroTimer: React.FC = () => {
         </div>
       )}
 
+      {/* Modal de Configuración */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-3xl flex items-center justify-center p-8 z-[300]">
+          <div className={`w-full max-w-md rounded-[3rem] p-10 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] animate-in zoom-in duration-300 ${theme === 'dark' ? 'bg-slate-900 border border-white/5' : 'bg-white'}`}>
+            <div className="flex items-center justify-between mb-8">
+              <h3 className="text-2xl font-black">⚙️ Configuración</h3>
+              <button onClick={() => setShowSettingsModal(false)} className="p-2 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">💪 Trabajo (minutos)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="60"
+                  value={tempSettings.work_duration}
+                  onChange={e => setTempSettings({...tempSettings, work_duration: parseInt(e.target.value)})}
+                  className={`w-full p-4 rounded-2xl font-bold text-lg outline-none ${theme === 'dark' ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">☕ Descanso Corto (minutos)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="30"
+                  value={tempSettings.short_break}
+                  onChange={e => setTempSettings({...tempSettings, short_break: parseInt(e.target.value)})}
+                  className={`w-full p-4 rounded-2xl font-bold text-lg outline-none ${theme === 'dark' ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">🌴 Descanso Largo (minutos)</label>
+                <input 
+                  type="number" 
+                  min="1" 
+                  max="60"
+                  value={tempSettings.long_break}
+                  onChange={e => setTempSettings({...tempSettings, long_break: parseInt(e.target.value)})}
+                  className={`w-full p-4 rounded-2xl font-bold text-lg outline-none ${theme === 'dark' ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'}`}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-black uppercase tracking-widest text-slate-400 mb-2">🔄 Pomodoros antes de descanso largo</label>
+                <input 
+                  type="number" 
+                  min="2" 
+                  max="10"
+                  value={tempSettings.poms_before_long}
+                  onChange={e => setTempSettings({...tempSettings, poms_before_long: parseInt(e.target.value)})}
+                  className={`w-full p-4 rounded-2xl font-bold text-lg outline-none ${theme === 'dark' ? 'bg-slate-800 text-white' : 'bg-slate-50 text-slate-900'}`}
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-10 pt-8 border-t border-slate-100 dark:border-slate-800">
+              <button 
+                onClick={() => setShowSettingsModal(false)}
+                className="flex-1 py-4 font-black text-slate-400 uppercase tracking-widest text-xs"
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={handleSaveSettings}
+                className="flex-1 py-4 bg-indigo-600 text-white font-black rounded-2xl shadow-xl hover:bg-indigo-700 transition-all"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCompletionModal && (
         <div className="fixed inset-0 bg-slate-950/95 backdrop-blur-3xl flex items-center justify-center p-8 z-[300]">
           <div className={`w-full max-w-xl rounded-[4rem] p-16 shadow-[0_50px_100px_-20px_rgba(0,0,0,0.5)] animate-in zoom-in duration-500 ${theme === 'dark' ? 'bg-slate-900 border border-white/5' : 'bg-white'}`}>
             <div className="w-32 h-32 bg-indigo-600 text-white rounded-[2rem] flex items-center justify-center mx-auto mb-10 shadow-2xl rotate-3">
               <Trophy size={64} />
             </div>
-            <h2 className={`text-5xl font-black text-center mb-4 tracking-tighter ${theme === 'dark' ? 'text-white' : 'text-slate-950'}`}>¡Misión Cumplida!</h2>
-            <p className="text-center text-slate-500 font-bold mb-12 text-lg">Tu cerebro te agradece el enfoque. ¿Cómo fue la calidad?</p>
-            <div className="flex justify-center gap-4 mb-16">
-              {[1, 2, 3, 4, 5].map(s => (
-                <button key={s} onClick={() => setRating(s)} className={`transition-all hover:scale-125 ${rating >= s ? 'text-yellow-400' : 'text-slate-200'}`}>
-                  <Star size={54} fill={rating >= s ? "currentColor" : "none"} strokeWidth={3} />
+            <h2 className="text-4xl font-black text-center mb-4">¡Pomodoro Completado!</h2>
+            <p className="text-center text-slate-500 font-medium mb-10">Has terminado {sessionCount} sesión{sessionCount > 1 ? 'es' : ''} de enfoque profundo.</p>
+            
+            <div className="flex justify-center gap-3 mb-10">
+              {[1, 2, 3, 4, 5].map(star => (
+                <button key={star} onClick={() => setRating(star)} className={`transition-all hover:scale-125 ${rating >= star ? 'text-amber-400' : 'text-slate-300'}`}>
+                  <Star size={40} fill={rating >= star ? 'currentColor' : 'none'} />
                 </button>
               ))}
             </div>
-            <button onClick={saveSession} className="w-full bg-indigo-600 text-white font-black py-8 rounded-[2.5rem] shadow-2xl hover:bg-indigo-700 transition-all uppercase tracking-[0.2em] text-lg active:scale-95">
-              Registrar Esfuerzo
+
+            <button 
+              onClick={() => { setShowCompletionModal(false); setRating(0); }}
+              className="w-full py-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-lg rounded-[2rem] shadow-2xl hover:shadow-indigo-500/50 transition-all"
+            >
+              Continuar
             </button>
           </div>
         </div>
