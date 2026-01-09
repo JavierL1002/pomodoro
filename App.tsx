@@ -31,8 +31,15 @@ const App: React.FC = () => {
   const [localSettings, setLocalSettings] = useState<PomodoroSettings | null>(null);
 
   useEffect(() => {
-    if (activeProfileId && settings[activeProfileId]) {
-      setLocalSettings(settings[activeProfileId]);
+    if (activeProfileId) {
+      // Si existen settings para este perfil, usarlos; si no, usar valores por defecto
+      setLocalSettings(settings[activeProfileId] || {
+        work_duration: 25,
+        short_break: 5,
+        long_break: 15,
+        poms_before_long: 4,
+        auto_start_breaks: false
+      });
     }
   }, [activeProfileId, settings]);
 
@@ -65,8 +72,12 @@ const App: React.FC = () => {
 
   const handleSaveSettings = () => {
     if (activeProfileId && localSettings) {
+      console.log("📥 Guardando configuración:", localSettings);
       updateSettings(activeProfileId, localSettings);
-      alert("Configuración guardada correctamente.");
+      alert("✅ Configuración guardada correctamente. Los cambios se aplicarán en el próximo ciclo de Pomodoro.");
+    } else {
+      console.error("❌ No se pudo guardar: activeProfileId=", activeProfileId, "localSettings=", localSettings);
+      alert("❌ Error: No se pudo guardar la configuración. Intenta recargar la página.");
     }
   };
 
@@ -188,36 +199,56 @@ const App: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Tiempo de Trabajo (minutos)</label>
                       <input 
-                        type="number" 
+                        type="number"
+                        min="1"
+                        max="60" 
                         value={localSettings?.work_duration || 25} 
-                        onChange={(e) => setLocalSettings(prev => prev ? { ...prev, work_duration: parseInt(e.target.value) || 0 } : null)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 25;
+                          setLocalSettings(prev => prev ? { ...prev, work_duration: value } : { work_duration: value, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                        }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Descanso Corto (minutos)</label>
                       <input 
-                        type="number" 
+                        type="number"
+                        min="1"
+                        max="30" 
                         value={localSettings?.short_break || 5} 
-                        onChange={(e) => setLocalSettings(prev => prev ? { ...prev, short_break: parseInt(e.target.value) || 0 } : null)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 5;
+                          setLocalSettings(prev => prev ? { ...prev, short_break: value } : { work_duration: 25, short_break: value, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                        }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Descanso Largo (minutos)</label>
                       <input 
-                        type="number" 
+                        type="number"
+                        min="1"
+                        max="60" 
                         value={localSettings?.long_break || 15} 
-                        onChange={(e) => setLocalSettings(prev => prev ? { ...prev, long_break: parseInt(e.target.value) || 0 } : null)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 15;
+                          setLocalSettings(prev => prev ? { ...prev, long_break: value } : { work_duration: 25, short_break: 5, long_break: value, poms_before_long: 4, auto_start_breaks: false });
+                        }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
                     </div>
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pomodoros hasta Descanso Largo</label>
                       <input 
-                        type="number" 
+                        type="number"
+                        min="2"
+                        max="10" 
                         value={localSettings?.poms_before_long || 4} 
-                        onChange={(e) => setLocalSettings(prev => prev ? { ...prev, poms_before_long: parseInt(e.target.value) || 0 } : null)}
+                        onChange={(e) => {
+                          const value = parseInt(e.target.value) || 4;
+                          setLocalSettings(prev => prev ? { ...prev, poms_before_long: value } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: value, auto_start_breaks: false });
+                        }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
                     </div>
