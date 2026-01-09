@@ -144,7 +144,7 @@ const PomodoroTimer: React.FC = () => {
 
   // FIX 1: Temporizador preciso basado en tiempo real
   useEffect(() => {
-    if (isActive && timeLeft > 0) {
+    if (isActive) {
       // Limpiar cualquier intervalo previo
       if (timerRef.current) {
         clearInterval(timerRef.current);
@@ -163,7 +163,11 @@ const PomodoroTimer: React.FC = () => {
         setTimeLeft(remaining);
 
         // Si llegamos a 0, completar la sesión
-        if (remaining === 0) {
+        if (remaining <= 0) {
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
           handleComplete();
         }
       }, 100);
@@ -180,7 +184,7 @@ const PomodoroTimer: React.FC = () => {
         timerRef.current = null;
       }
     }
-  }, [isActive, timeLeft]);
+  }, [isActive]);
 
   const handleStart = () => {
     if (!isActive) {
@@ -231,11 +235,14 @@ const PomodoroTimer: React.FC = () => {
       timerRef.current = null;
     }
 
-    // FIX 2: Calcular el tiempo REAL trabajado
-    const actualDuration = initialDurationRef.current - timeLeft; // En segundos
+    // FIX 2: Calcular el tiempo REAL trabajado desde el timestamp de inicio
+    const actualDuration = startTimeRef.current 
+      ? Math.floor((Date.now() - startTimeRef.current) / 1000) 
+      : initialDurationRef.current; // En segundos
     const actualMinutes = Math.round(actualDuration / 60);
 
-    console.log(`✅ Sesión completada: ${actualMinutes} minutos trabajados`);
+    console.log(`✅ Sesión completada: ${actualMinutes} minutos trabajados (${actualDuration} segundos)`);
+    console.log(`🕒 Duración configurada: ${Math.floor(initialDurationRef.current / 60)} minutos`);
 
     if (mode === 'work' && activeProfileId && sessionStartedRef.current) {
       // Marcar como guardada ANTES de guardar para prevenir duplicación
@@ -257,8 +264,17 @@ const PomodoroTimer: React.FC = () => {
       setSessionCount(prev => prev + 1);
     }
 
-    // Resetear el temporizador para el siguiente ciclo
-    handleReset();
+    // Resetear referencias para el siguiente ciclo
+    startTimeRef.current = null;
+    sessionStartedRef.current = null;
+    
+    // Resetear el temporizador
+    if (currentSettings) {
+      const mins = mode === 'work' ? currentSettings.work_duration : mode === 'short_break' ? currentSettings.short_break : currentSettings.long_break;
+      const seconds = mins * 60;
+      setTimeLeft(seconds);
+      initialDurationRef.current = seconds;
+    }
   };
 
   const formatTime = (seconds: number) => {
