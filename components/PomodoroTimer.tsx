@@ -62,13 +62,41 @@ const PomodoroTimer: React.FC = () => {
 
   const getMotivationalPhrase = () => {
     const phrases = [
+      "¡Vamos carajo! 💪",
       "¡Vas increíble! 🚀",
       "Sigue así, campeón 💪",
       "Tu esfuerzo vale oro ⭐",
       "Estás en racha 🔥",
-      "¡Imparable! 🎯"
+      "¡Imparable! 🎯",
+      "¡Vamos carajo, tú puedes! 🔥",
+      "Dale con todo, carajo 💥"
     ];
     return phrases[Math.floor(Math.random() * phrases.length)];
+  };
+
+  // Función para reproducir sonido de alerta
+  const playAlertSound = () => {
+    try {
+      const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const oscillator = audioContext.createOscillator();
+      const gainNode = audioContext.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+      
+      // Sonido fuerte y claro (frecuencia alta)
+      oscillator.frequency.value = 800; // Hz
+      oscillator.type = 'sine';
+      
+      // Volumen
+      gainNode.gain.setValueAtTime(0.3, audioContext.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.5);
+      
+      oscillator.start(audioContext.currentTime);
+      oscillator.stop(audioContext.currentTime + 0.5);
+    } catch (err) {
+      console.log('No se pudo reproducir sonido:', err);
+    }
   };
 
   const getAiSuggestion = async () => {
@@ -126,6 +154,7 @@ const PomodoroTimer: React.FC = () => {
     if (isActive && mode === 'work') {
       const interval = setInterval(() => {
         setMotivation(getMotivationalPhrase());
+        playAlertSound(); // Reproducir sonido al iniciar
         setTimeout(() => setMotivation(null), 5000);
       }, 90000); 
       return () => clearInterval(interval);
@@ -234,6 +263,10 @@ const PomodoroTimer: React.FC = () => {
       clearInterval(timerRef.current);
       timerRef.current = null;
     }
+    
+    // Reproducir sonido de alerta al terminar
+    playAlertSound();
+    setTimeout(() => playAlertSound(), 200); // Reproducir dos veces para que sea más notorio
 
     // FIX 2: Calcular el tiempo REAL trabajado desde el timestamp de inicio
     const actualDuration = startTimeRef.current 

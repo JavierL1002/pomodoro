@@ -199,13 +199,21 @@ const App: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Tiempo de Trabajo (minutos)</label>
                       <input 
-                        type="number"
-                        min="1"
-                        max="60" 
-                        value={localSettings?.work_duration || 25} 
+                        type="text"
+                        inputMode="numeric"
+                        value={localSettings?.work_duration?.toString() || '25'} 
                         onChange={(e) => {
-                          const value = parseInt(e.target.value) || 25;
-                          setLocalSettings(prev => prev ? { ...prev, work_duration: value } : { work_duration: value, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          const inputValue = e.target.value;
+                          // Solo permitir números
+                          if (inputValue === '' || /^\d+$/.test(inputValue)) {
+                            const numValue = inputValue === '' ? 25 : Math.min(Math.max(parseInt(inputValue), 1), 60);
+                            setLocalSettings(prev => prev ? { ...prev, work_duration: numValue } : { work_duration: numValue, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || isNaN(parseInt(e.target.value))) {
+                            setLocalSettings(prev => prev ? { ...prev, work_duration: 25 } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
                         }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
@@ -213,13 +221,20 @@ const App: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Descanso Corto (minutos)</label>
                       <input 
-                        type="number"
-                        min="1"
-                        max="30" 
-                        value={localSettings?.short_break || 5} 
+                        type="text"
+                        inputMode="numeric"
+                        value={localSettings?.short_break?.toString() || '5'} 
                         onChange={(e) => {
-                          const value = parseInt(e.target.value) || 5;
-                          setLocalSettings(prev => prev ? { ...prev, short_break: value } : { work_duration: 25, short_break: value, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          const inputValue = e.target.value;
+                          if (inputValue === '' || /^\d+$/.test(inputValue)) {
+                            const numValue = inputValue === '' ? 5 : Math.min(Math.max(parseInt(inputValue), 1), 30);
+                            setLocalSettings(prev => prev ? { ...prev, short_break: numValue } : { work_duration: 25, short_break: numValue, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || isNaN(parseInt(e.target.value))) {
+                            setLocalSettings(prev => prev ? { ...prev, short_break: 5 } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
                         }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
@@ -227,13 +242,20 @@ const App: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Descanso Largo (minutos)</label>
                       <input 
-                        type="number"
-                        min="1"
-                        max="60" 
-                        value={localSettings?.long_break || 15} 
+                        type="text"
+                        inputMode="numeric"
+                        value={localSettings?.long_break?.toString() || '15'} 
                         onChange={(e) => {
-                          const value = parseInt(e.target.value) || 15;
-                          setLocalSettings(prev => prev ? { ...prev, long_break: value } : { work_duration: 25, short_break: 5, long_break: value, poms_before_long: 4, auto_start_breaks: false });
+                          const inputValue = e.target.value;
+                          if (inputValue === '' || /^\d+$/.test(inputValue)) {
+                            const numValue = inputValue === '' ? 15 : Math.min(Math.max(parseInt(inputValue), 1), 60);
+                            setLocalSettings(prev => prev ? { ...prev, long_break: numValue } : { work_duration: 25, short_break: 5, long_break: numValue, poms_before_long: 4, auto_start_breaks: false });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || isNaN(parseInt(e.target.value))) {
+                            setLocalSettings(prev => prev ? { ...prev, long_break: 15 } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
                         }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
@@ -241,13 +263,20 @@ const App: React.FC = () => {
                     <div className="space-y-2">
                       <label className="block text-xs font-black uppercase tracking-widest text-slate-400 ml-1">Pomodoros hasta Descanso Largo</label>
                       <input 
-                        type="number"
-                        min="2"
-                        max="10" 
-                        value={localSettings?.poms_before_long || 4} 
+                        type="text"
+                        inputMode="numeric"
+                        value={localSettings?.poms_before_long?.toString() || '4'} 
                         onChange={(e) => {
-                          const value = parseInt(e.target.value) || 4;
-                          setLocalSettings(prev => prev ? { ...prev, poms_before_long: value } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: value, auto_start_breaks: false });
+                          const inputValue = e.target.value;
+                          if (inputValue === '' || /^\d+$/.test(inputValue)) {
+                            const numValue = inputValue === '' ? 4 : Math.min(Math.max(parseInt(inputValue), 2), 10);
+                            setLocalSettings(prev => prev ? { ...prev, poms_before_long: numValue } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: numValue, auto_start_breaks: false });
+                          }
+                        }}
+                        onBlur={(e) => {
+                          if (e.target.value === '' || isNaN(parseInt(e.target.value))) {
+                            setLocalSettings(prev => prev ? { ...prev, poms_before_long: 4 } : { work_duration: 25, short_break: 5, long_break: 15, poms_before_long: 4, auto_start_breaks: false });
+                          }
                         }}
                         className={`w-full p-5 rounded-3xl outline-none focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg transition-all ${theme === 'dark' ? 'bg-slate-700 text-white' : 'bg-slate-50 text-slate-900 border border-slate-100'}`} 
                       />
