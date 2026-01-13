@@ -95,7 +95,14 @@ export const useAppStore = create<AppState>()(
             console.error('Error al cargar perfiles:', profilesError);
           } else if (profiles) {
             console.log(`✅ Perfiles cargados: ${profiles.length}`);
-            set({ profiles });
+            
+            // Si hay perfiles pero no hay uno activo, activar el primero
+            const currentActiveId = get().activeProfileId;
+            const newActiveId = (profiles.length > 0 && !profiles.find(p => p.id === currentActiveId)) 
+              ? profiles[0].id 
+              : currentActiveId;
+
+            set({ profiles, activeProfileId: newActiveId });
           }
 
           // Cargar períodos escolares
@@ -267,6 +274,14 @@ export const useAppStore = create<AppState>()(
         set((state) => ({ alerts: state.alerts.map(a => a.id === id ? { ...a, is_read: true } : a) }));
       }
     }),
-    { name: 'pomosmart-cloud-v1' }
+    { 
+      name: 'pomosmart-cloud-v1',
+      // No persistir los datos que vienen de Supabase para evitar conflictos
+      // al recargar la página o cambiar de navegador.
+      partialize: (state) => ({ 
+        theme: state.theme, 
+        activeProfileId: state.activeProfileId 
+      }),
+    }
   )
 );

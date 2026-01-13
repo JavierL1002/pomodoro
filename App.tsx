@@ -18,7 +18,11 @@ const App: React.FC = () => {
   
   // Cargar datos desde Supabase al iniciar la aplicación
   useEffect(() => {
-    syncWithSupabase();
+    const initApp = async () => {
+      console.log("🚀 Iniciando aplicación y sincronizando datos...");
+      await syncWithSupabase();
+    };
+    initApp();
   }, []);
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showCreateProfile, setShowCreateProfile] = useState(false);
